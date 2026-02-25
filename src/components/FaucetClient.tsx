@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { TokenCard } from './TokenCard';
 import { WalletBar } from './WalletBar';
-import { ALPHA_ADDRESS, BETA_ADDRESS, NETWORK_NAME, MINE_REWARD_TOKENS, MINE_COST_SATS } from '@/lib/contracts';
+import { useToast } from '@/contexts/ToastContext';
+import { ALPHA_ADDRESS, BETA_ADDRESS, NETWORK_NAME, MINE_REWARD_TOKENS, MINE_COST_SATS, RPC_URL } from '@/lib/contracts';
 
 type WalletState = {
     connected: boolean;
@@ -95,6 +96,32 @@ export function FaucetClient() {
         network: null,
     });
     const [opnetAvailable, setOpnetAvailable] = useState(false);
+    const [btcBalance, setBtcBalance] = useState<string | null>(null);
+    const { toast } = useToast();
+
+    // Fetch BTC balance via RPC
+    useEffect(() => {
+        if (!wallet.connected || !wallet.address) {
+            setBtcBalance(null);
+            return;
+        }
+        let cancelled = false;
+        (async () => {
+            try {
+                const { JSONRpcProvider } = await import('opnet');
+                const { networks } = await import('@btc-vision/bitcoin');
+                const provider = new JSONRpcProvider(RPC_URL, networks.testnet);
+                const satoshis = await provider.getBalance(wallet.address!);
+                if (!cancelled) {
+                    const btc = Number(satoshis) / 1e8;
+                    setBtcBalance(btc.toFixed(8));
+                }
+            } catch (err) {
+                console.error('Failed to fetch BTC balance:', err);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [wallet.connected, wallet.address]);
 
     // Detect OPWallet extension
     useEffect(() => {
@@ -146,7 +173,7 @@ export function FaucetClient() {
     const connectWallet = useCallback(async () => {
         const opnet = (window as any).opnet;
         if (!opnet) {
-            alert('OPWallet not detected. Install it from the Chrome Web Store.');
+            toast.warning('OPWallet not detected. Install it from the Chrome Web Store.');
             return;
         }
         try {
@@ -157,7 +184,7 @@ export function FaucetClient() {
             saveWallet(state);
         } catch (err: any) {
             console.error('Wallet connection failed:', err);
-            alert(`Connection failed: ${err?.message ?? 'Unknown error'}`);
+            toast.error(`Connection failed: ${err?.message ?? 'Unknown error'}`);
         }
     }, []);
 
@@ -249,6 +276,20 @@ export function FaucetClient() {
                         </svg>
                     </a>
                 </div>
+
+                {wallet.connected && btcBalance !== null && (
+                    <div
+                        className="mb-8 rounded-xl border-3 border-black nb-shadow px-6 py-4 flex items-center justify-between"
+                        style={{ backgroundColor: 'var(--card-bg)', borderWidth: '3px' }}
+                    >
+                        <span className="text-sm font-bold uppercase tracking-wide" style={{ color: '#666' }}>
+                            Your BTC Balance
+                        </span>
+                        <span className="text-xl font-black">
+                            {btcBalance} <span style={{ color: 'var(--orange)' }}>BTC</span>
+                        </span>
+                    </div>
+                )}
 
                 <div className="grid gap-8 sm:grid-cols-2">
                     <TokenCard

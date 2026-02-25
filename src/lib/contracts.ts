@@ -6,10 +6,10 @@
 export const NETWORK_NAME = 'OPNet Testnet';
 export const RPC_URL = 'https://testnet.opnet.org';
 
-/** AlphaToken v2 — has mine() */
-export const ALPHA_ADDRESS = 'opt1sqq0k32mjtxlhlsvwfn7awevg2h3vamaxrvhtz5th';
-/** BetaToken v2 — has mine() */
-export const BETA_ADDRESS = 'opt1sqrlu3rjls5eu49jkhed3z32t2ptf4jdxt5c0hnn5';
+/** AlphaToken v3 — has mine() */
+export const ALPHA_ADDRESS = 'opt1sqrfjaegty67hjsp454halqkr2nxa0f6tnydz3kxc';
+/** BetaToken v3 — has mine() */
+export const BETA_ADDRESS = 'opt1sqq697v6kk9hhtvnvxv543hvm35sxyjez7uwrr6h6';
 
 /** Cost to mine: 0.00001 BTC = 1000 satoshis */
 export const MINE_COST_SATS = BigInt(1000);

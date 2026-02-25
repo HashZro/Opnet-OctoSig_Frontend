@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { MINE_COST_SATS, MINE_REWARD_TOKENS, MINE_ABI, RPC_URL } from '@/lib/contracts';
+import { useToast } from '@/contexts/ToastContext';
 import { networks } from '@btc-vision/bitcoin';
 
 type WalletState = {
@@ -20,6 +21,10 @@ type Props = {
 
 type MineStatus = 'idle' | 'pending' | 'success' | 'error';
 
+function pendingTxKey(contractAddress: string, walletAddress: string) {
+    return `mine_pending_${contractAddress}_${walletAddress}`;
+}
+
 function formatBalance(raw: bigint, decimals: number): string {
     const divisor = BigInt(10 ** decimals);
     const whole = raw / divisor;
@@ -34,6 +39,18 @@ export function TokenCard({ symbol, name, contractAddress, accentColor, wallet }
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [balance, setBalance] = useState<string | null>(null);
     const [balanceLoading, setBalanceLoading] = useState(false);
+    const [copied, setCopied] = useState(false);
+    const { toast } = useToast();
+
+    // Restore any previously submitted pending tx from localStorage
+    useEffect(() => {
+        if (!wallet.address) return;
+        const stored = localStorage.getItem(pendingTxKey(contractAddress, wallet.address));
+        if (stored) {
+            setTxId(stored);
+            setStatus('success');
+        }
+    }, [contractAddress, wallet.address]);
 
     const fetchBalance = useCallback(async () => {
         if (!wallet.connected || !wallet.address) {
@@ -89,7 +106,31 @@ export function TokenCard({ symbol, name, contractAddress, accentColor, wallet }
         if (!opnet) {
             setErrorMsg('OPWallet not found');
             setStatus('error');
+            toast.error('OPWallet not found');
             return;
+        }
+
+        // Check if a previously submitted tx is still pending in the mempool
+        const storedTxId = localStorage.getItem(pendingTxKey(contractAddress, wallet.address));
+        if (storedTxId) {
+            try {
+                const { JSONRpcProvider } = await import('opnet');
+                const provider = new JSONRpcProvider(RPC_URL, networks.testnet);
+                const receipt = await provider.getTransactionReceipt(storedTxId);
+                if (!receipt) {
+                    // Still unconfirmed
+                    console.log(`[${symbol}] mine() already pending in mempool — tx: ${storedTxId}`);
+                    toast.warning(`${symbol} mine already pending in mempool. Tx: ${storedTxId.slice(0, 16)}…`);
+                    return;
+                }
+                // Confirmed — clear it and proceed
+                localStorage.removeItem(pendingTxKey(contractAddress, wallet.address));
+            } catch {
+                // Receipt lookup threw → treat as still pending
+                console.log(`[${symbol}] mine() already pending in mempool — tx: ${storedTxId}`);
+                toast.warning(`${symbol} mine already pending in mempool. Tx: ${storedTxId.slice(0, 16)}…`);
+                return;
+            }
         }
 
         setStatus('pending');
@@ -119,7 +160,7 @@ export function TokenCard({ symbol, name, contractAddress, accentColor, wallet }
 
             // Send the transaction via OPWallet with BTC payment attached
             const receipt = await simulation.sendTransaction({
-                signer: opnet,            // OPWallet acts as signer
+                signer: opnet,
                 refundTo: wallet.address,
                 maximumAllowedSatToSpend: BigInt(500_000),
                 feeRate: 10,
@@ -132,14 +173,23 @@ export function TokenCard({ symbol, name, contractAddress, accentColor, wallet }
                 ],
             });
 
-            setTxId(receipt?.transactionId ?? receipt?.[1] ?? 'submitted');
+            const submittedTxId = receipt?.transactionId ?? receipt?.[1] ?? 'submitted';
+
+            // Persist pending tx so we can detect double-submits across page loads
+            if (submittedTxId !== 'submitted') {
+                localStorage.setItem(pendingTxKey(contractAddress, wallet.address), submittedTxId);
+            }
+
+            setTxId(submittedTxId);
             setStatus('success');
+            toast.success(`Mined ${MINE_REWARD_TOKENS} ${symbol}!`);
             // Refresh balance after successful mine
             setTimeout(() => fetchBalance(), 2000);
         } catch (err: any) {
             console.error(`mine ${symbol} failed:`, err);
             setErrorMsg(err?.message ?? 'Transaction failed');
             setStatus('error');
+            toast.error(`${symbol} mine failed: ${err?.message ?? 'Transaction failed'}`);
         }
     }
 
@@ -200,14 +250,28 @@ export function TokenCard({ symbol, name, contractAddress, accentColor, wallet }
                 </div>
             )}
 
-            {/* Address */}
+            {/* Address — click to copy */}
             <div
-                className="rounded-lg border-2 border-black p-2"
-                style={{ backgroundColor: '#f8f8f0' }}
+                onClick={() => {
+                    navigator.clipboard.writeText(contractAddress);
+                    setCopied(true);
+                    toast.success('Address copied!');
+                    setTimeout(() => setCopied(false), 1500);
+                }}
+                className="rounded-lg border-2 border-black p-2 cursor-pointer transition-all duration-150 active:scale-95 hover:border-[3px]"
+                style={{ backgroundColor: copied ? accentColor + '33' : '#f8f8f0' }}
             >
-                <p className="mb-1 text-xs font-bold uppercase tracking-wider" style={{ color: '#888' }}>
-                    Contract
-                </p>
+                <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs font-bold uppercase tracking-wider" style={{ color: '#888' }}>
+                        Contract
+                    </p>
+                    <span
+                        className="text-xs font-bold uppercase transition-opacity duration-300"
+                        style={{ color: accentColor, opacity: copied ? 1 : 0 }}
+                    >
+                        Copied!
+                    </span>
+                </div>
                 <code className="block truncate text-xs font-bold" style={{ color: '#333' }}>
                     {contractAddress}
                 </code>
