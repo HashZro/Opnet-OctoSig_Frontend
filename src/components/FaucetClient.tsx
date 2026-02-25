@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { TokenCard } from './TokenCard';
 import { WalletBar } from './WalletBar';
 import { ALPHA_ADDRESS, BETA_ADDRESS, NETWORK_NAME, MINE_REWARD_TOKENS, MINE_COST_SATS } from '@/lib/contracts';
@@ -11,6 +11,83 @@ type WalletState = {
     network: string | null;
 };
 
+function CopyAddress({ address, label }: { address: string; label: string }) {
+    const [copied, setCopied] = useState(false);
+    const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const handleCopy = useCallback(async () => {
+        try {
+            await navigator.clipboard.writeText(address);
+        } catch {
+            // Fallback for older browsers
+            const ta = document.createElement('textarea');
+            ta.value = address;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        }
+        setCopied(true);
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        timeoutRef.current = setTimeout(() => setCopied(false), 1500);
+    }, [address]);
+
+    useEffect(() => {
+        return () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); };
+    }, []);
+
+    return (
+        <span className="inline-flex items-center gap-1">
+            <code className="rounded px-1" style={{ backgroundColor: '#f0f0f0' }}>{address}</code>
+            <span style={{ color: '#666' }}>({label})</span>
+            <button
+                type="button"
+                onClick={handleCopy}
+                title={copied ? 'Copied!' : `Copy ${label} address`}
+                className="inline-flex items-center justify-center rounded border-2 border-black transition-all"
+                style={{
+                    width: '22px',
+                    height: '22px',
+                    backgroundColor: copied ? 'var(--teal)' : 'var(--card-bg, #fff)',
+                    transform: copied ? 'translate(1px, 1px)' : 'translate(0, 0)',
+                    boxShadow: copied ? '0 0 0 0 #000' : '2px 2px 0 0 #000',
+                    transitionDuration: '100ms',
+                    cursor: 'pointer',
+                }}
+            >
+                {copied ? (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                ) : (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                    </svg>
+                )}
+            </button>
+        </span>
+    );
+}
+
+const WALLET_STORAGE_KEY = 'octosig_wallet';
+
+function saveWallet(state: WalletState) {
+    try { localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(state)); } catch {}
+}
+
+function loadWallet(): WalletState | null {
+    try {
+        const raw = localStorage.getItem(WALLET_STORAGE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (parsed?.connected && parsed?.address) return parsed;
+    } catch {}
+    return null;
+}
+
 export function FaucetClient() {
     const [wallet, setWallet] = useState<WalletState>({
         connected: false,
@@ -19,8 +96,8 @@ export function FaucetClient() {
     });
     const [opnetAvailable, setOpnetAvailable] = useState(false);
 
+    // Detect OPWallet extension
     useEffect(() => {
-        // Check for OPWallet injection
         const check = () => {
             if (typeof window !== 'undefined' && 'opnet' in window) {
                 setOpnetAvailable(true);
@@ -28,12 +105,42 @@ export function FaucetClient() {
         };
         check();
         window.addEventListener('opnet#initialized', check);
-        // Give the extension a moment to inject
         const t = setTimeout(check, 500);
         return () => {
             window.removeEventListener('opnet#initialized', check);
             clearTimeout(t);
         };
+    }, []);
+
+    // Auto-reconnect from saved session
+    useEffect(() => {
+        const saved = loadWallet();
+        if (!saved) return;
+
+        const tryReconnect = async () => {
+            const opnet = (window as any).opnet;
+            if (!opnet) return;
+            try {
+                const accounts: string[] = await opnet.requestAccounts();
+                const network: string = await opnet.getNetwork();
+                const state: WalletState = { connected: true, address: accounts[0] ?? null, network };
+                setWallet(state);
+                saveWallet(state);
+            } catch {
+                // Extension rejected silent reconnect — clear saved state
+                localStorage.removeItem(WALLET_STORAGE_KEY);
+            }
+        };
+
+        // Wait for extension to inject, then reconnect
+        if ((window as any).opnet) {
+            tryReconnect();
+        } else {
+            const onInit = () => { tryReconnect(); window.removeEventListener('opnet#initialized', onInit); };
+            window.addEventListener('opnet#initialized', onInit);
+            const t = setTimeout(tryReconnect, 600);
+            return () => { window.removeEventListener('opnet#initialized', onInit); clearTimeout(t); };
+        }
     }, []);
 
     const connectWallet = useCallback(async () => {
@@ -45,15 +152,13 @@ export function FaucetClient() {
         try {
             const accounts: string[] = await opnet.requestAccounts();
             const network: string = await opnet.getNetwork();
-            setWallet({ connected: true, address: accounts[0] ?? null, network });
+            const state: WalletState = { connected: true, address: accounts[0] ?? null, network };
+            setWallet(state);
+            saveWallet(state);
         } catch (err: any) {
             console.error('Wallet connection failed:', err);
             alert(`Connection failed: ${err?.message ?? 'Unknown error'}`);
         }
-    }, []);
-
-    const disconnectWallet = useCallback(() => {
-        setWallet({ connected: false, address: null, network: null });
     }, []);
 
     return (
@@ -79,7 +184,6 @@ export function FaucetClient() {
                         wallet={wallet}
                         opnetAvailable={opnetAvailable}
                         onConnect={connectWallet}
-                        onDisconnect={disconnectWallet}
                     />
                 </div>
             </header>
@@ -116,6 +220,36 @@ export function FaucetClient() {
                     </div>
                 )}
 
+                <div className="mb-8 text-center">
+                    <a
+                        href="https://faucet.opnet.org/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 rounded-lg border-3 border-black px-5 py-2.5 text-sm font-bold uppercase tracking-wide transition-all"
+                        style={{
+                            backgroundColor: 'var(--yellow)',
+                            color: '#000',
+                            borderWidth: '3px',
+                            boxShadow: '4px 4px 0 0 #000',
+                            transform: 'translate(0, 0)',
+                        }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.transform = 'translate(4px, 4px)';
+                            e.currentTarget.style.boxShadow = '0 0 0 0 #000';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = 'translate(0, 0)';
+                            e.currentTarget.style.boxShadow = '4px 4px 0 0 #000';
+                        }}
+                    >
+                        Need testnet BTC? Get it from the OPNet Faucet
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M7 17L17 7" />
+                            <path d="M7 7h10v10" />
+                        </svg>
+                    </a>
+                </div>
+
                 <div className="grid gap-8 sm:grid-cols-2">
                     <TokenCard
                         symbol="ALPHA"
@@ -146,13 +280,15 @@ export function FaucetClient() {
                         <li>The contract verifies the payment and mints <strong>100 tokens</strong> to your address</li>
                         <li>Tokens appear in your wallet after the transaction confirms</li>
                     </ol>
-                    <p className="mt-4 text-xs font-medium" style={{ color: '#666' }}>
-                        Contract addresses:{' '}
-                        <code className="rounded px-1" style={{ backgroundColor: '#f0f0f0' }}>{ALPHA_ADDRESS}</code>{' '}
-                        (ALPHA) ·{' '}
-                        <code className="rounded px-1" style={{ backgroundColor: '#f0f0f0' }}>{BETA_ADDRESS}</code>{' '}
-                        (BETA)
-                    </p>
+                    <div className="mt-4" style={{ color: '#666' }}>
+                        <p className="mb-2 text-sm font-black uppercase tracking-wide" style={{ color: '#333' }}>
+                            Contract Addresses
+                        </p>
+                        <div className="flex flex-col gap-2">
+                            <CopyAddress address={ALPHA_ADDRESS} label="ALPHA" />
+                            <CopyAddress address={BETA_ADDRESS} label="BETA" />
+                        </div>
+                    </div>
                 </div>
             </main>
 

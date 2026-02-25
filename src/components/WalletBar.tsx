@@ -10,7 +10,6 @@ type Props = {
     wallet: WalletState;
     opnetAvailable: boolean;
     onConnect: () => void;
-    onDisconnect: () => void;
 };
 
 function truncateAddress(addr: string): string {
@@ -18,30 +17,16 @@ function truncateAddress(addr: string): string {
     return `${addr.slice(0, 10)}...${addr.slice(-6)}`;
 }
 
-export function WalletBar({ wallet, opnetAvailable, onConnect, onDisconnect }: Props) {
+export function WalletBar({ wallet, opnetAvailable, onConnect }: Props) {
     if (wallet.connected && wallet.address) {
         return (
-            <div className="flex items-center gap-3">
-                <span
-                    className="rounded-lg border-2 border-black px-3 py-1 text-xs font-bold"
-                    style={{ backgroundColor: 'var(--green)', color: '#000' }}
-                >
-                    CONNECTED
-                </span>
-                <code
-                    className="hidden rounded-lg border-2 border-black px-3 py-1 text-xs font-bold sm:block"
-                    style={{ backgroundColor: '#222', color: 'var(--yellow)' }}
-                >
-                    {truncateAddress(wallet.address)}
-                </code>
-                <button
-                    onClick={onDisconnect}
-                    className="nb-press nb-shadow-sm rounded-lg border-2 border-black px-3 py-1 text-xs font-bold uppercase"
-                    style={{ backgroundColor: 'var(--red)', color: '#fff' }}
-                >
-                    Disconnect
-                </button>
-            </div>
+            <code
+                className="rounded-lg border-2 border-black px-3 py-1 text-xs font-bold"
+                style={{ backgroundColor: '#222', color: 'var(--yellow)' }}
+                title={wallet.address}
+            >
+                {truncateAddress(wallet.address)}
+            </code>
         );
     }
 

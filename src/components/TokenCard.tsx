@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { MINE_COST_SATS, MINE_REWARD_TOKENS, MINE_ABI, RPC_URL } from '@/lib/contracts';
 import { networks } from '@btc-vision/bitcoin';
 
@@ -20,10 +20,67 @@ type Props = {
 
 type MineStatus = 'idle' | 'pending' | 'success' | 'error';
 
+function formatBalance(raw: bigint, decimals: number): string {
+    const divisor = BigInt(10 ** decimals);
+    const whole = raw / divisor;
+    const frac = raw % divisor;
+    const fracStr = frac.toString().padStart(decimals, '0').replace(/0+$/, '');
+    return fracStr ? `${whole.toLocaleString()}.${fracStr}` : whole.toLocaleString();
+}
+
 export function TokenCard({ symbol, name, contractAddress, accentColor, wallet }: Props) {
     const [status, setStatus] = useState<MineStatus>('idle');
     const [txId, setTxId] = useState<string | null>(null);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [balance, setBalance] = useState<string | null>(null);
+    const [balanceLoading, setBalanceLoading] = useState(false);
+
+    const fetchBalance = useCallback(async () => {
+        if (!wallet.connected || !wallet.address) {
+            setBalance(null);
+            return;
+        }
+        setBalanceLoading(true);
+        try {
+            const { JSONRpcProvider, getContract, OP_20_ABI } = await import('opnet');
+            const provider = new JSONRpcProvider(RPC_URL, networks.testnet);
+            const contract = getContract(
+                contractAddress,
+                OP_20_ABI as any,
+                provider,
+                networks.testnet,
+            );
+
+            // Fetch balance and decimals in parallel
+            const [balResult, decResult] = await Promise.all([
+                (contract as any).balanceOf(wallet.address),
+                (contract as any).decimals().catch(() => null),
+            ]);
+
+            const raw = balResult?.properties?.balance
+                ?? balResult?.result
+                ?? balResult?.decoded?.[0]
+                ?? null;
+
+            if (raw !== null) {
+                const decimals = Number(
+                    decResult?.properties?.decimals
+                    ?? decResult?.result
+                    ?? decResult?.decoded?.[0]
+                    ?? 8
+                );
+                setBalance(formatBalance(BigInt(raw.toString()), decimals));
+            }
+        } catch (err) {
+            console.error(`Failed to fetch ${symbol} balance:`, err);
+        } finally {
+            setBalanceLoading(false);
+        }
+    }, [wallet.connected, wallet.address, contractAddress, symbol]);
+
+    useEffect(() => {
+        fetchBalance();
+    }, [fetchBalance]);
 
     async function handleMine() {
         if (!wallet.connected || !wallet.address) return;
@@ -45,16 +102,12 @@ export function TokenCard({ symbol, name, contractAddress, accentColor, wallet }
 
             const provider = new JSONRpcProvider(RPC_URL, networks.testnet);
 
-            // Build contract instance for simulation
-            // sender param requires Address type, not string
-            const { Address } = await import('@btc-vision/transaction');
-            const senderAddr = Address.fromString(wallet.address!);
+            // Build contract instance for simulation (sender is optional; mine() has no calldata)
             const contract = getContract(
                 contractAddress,
                 MINE_ABI as any,
                 provider,
                 networks.testnet,
-                senderAddr,
             );
 
             // Simulate the mine() call
@@ -81,6 +134,8 @@ export function TokenCard({ symbol, name, contractAddress, accentColor, wallet }
 
             setTxId(receipt?.transactionId ?? receipt?.[1] ?? 'submitted');
             setStatus('success');
+            // Refresh balance after successful mine
+            setTimeout(() => fetchBalance(), 2000);
         } catch (err: any) {
             console.error(`mine ${symbol} failed:`, err);
             setErrorMsg(err?.message ?? 'Transaction failed');
@@ -124,6 +179,26 @@ export function TokenCard({ symbol, name, contractAddress, accentColor, wallet }
                 <Stat label="Cost" value="0.00001 BTC" accent={accentColor} />
                 <Stat label="Reward" value={`${MINE_REWARD_TOKENS} ${symbol}`} accent={accentColor} />
             </div>
+
+            {/* Balance */}
+            {wallet.connected && (
+                <div
+                    className="rounded-lg border-2 border-black p-3"
+                    style={{ backgroundColor: accentColor + '22' }}
+                >
+                    <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#666' }}>
+                        Your Balance
+                    </p>
+                    <p className="mt-0.5 text-lg font-black">
+                        {balanceLoading
+                            ? '...'
+                            : balance !== null
+                                ? `${balance} ${symbol}`
+                                : `— ${symbol}`
+                        }
+                    </p>
+                </div>
+            )}
 
             {/* Address */}
             <div
