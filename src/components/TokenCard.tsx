@@ -60,6 +60,8 @@ export function TokenCard({ symbol, name, contractAddress, accentColor, wallet }
         setBalanceLoading(true);
         try {
             const { JSONRpcProvider, getContract, OP_20_ABI } = await import('opnet');
+            const { Address } = await import('@btc-vision/transaction');
+            const { toOutputScript } = await import('@btc-vision/bitcoin');
             const provider = new JSONRpcProvider(RPC_URL, networks.testnet);
             const contract = getContract(
                 contractAddress,
@@ -68,9 +70,14 @@ export function TokenCard({ symbol, name, contractAddress, accentColor, wallet }
                 networks.testnet,
             );
 
+            // balanceOf expects an Address object — decode bech32 to raw bytes
+            const OPNET_NET = { ...networks.testnet, bech32: networks.testnet.bech32Opnet! };
+            const script = toOutputScript(wallet.address!, OPNET_NET);
+            const ownerAddress = Address.wrap(script.subarray(2));
+
             // Fetch balance and decimals in parallel
             const [balResult, decResult] = await Promise.all([
-                (contract as any).balanceOf(wallet.address),
+                (contract as any).balanceOf(ownerAddress),
                 (contract as any).decimals().catch(() => null),
             ]);
 
