@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { MINE_COST_SATS, MINE_REWARD_TOKENS, MINE_ABI, RPC_URL } from '@/lib/contracts';
 import { useToast } from '@/contexts/ToastContext';
-import { networks } from '@btc-vision/bitcoin';
 
 type WalletState = {
     connected: boolean;
@@ -33,6 +32,32 @@ function formatBalance(raw: bigint, decimals: number): string {
     return fracStr ? `${whole.toLocaleString()}.${fracStr}` : whole.toLocaleString();
 }
 
+/**
+ * Pick the right network object for decoding a wallet address.
+ * OPWallet returns bcrt1... (regtest HRP) on OPNet testnet,
+ * so we must match the bech32 prefix to avoid "invalid prefix" errors.
+ */
+async function getNetworkForAddress(address: string) {
+    const { networks } = await import('@btc-vision/bitcoin');
+    const prefix = address.split('1')[0]; // e.g. "bcrt", "tb", "bc"
+
+    console.log(`[getNetworkForAddress] address prefix: "${prefix}"`);
+    console.log(`[getNetworkForAddress] networks.testnet.bech32 = "${networks.testnet.bech32}"`);
+    console.log(`[getNetworkForAddress] networks.regtest.bech32 = "${networks.regtest.bech32}"`);
+
+    if (prefix === networks.regtest.bech32) {
+        console.log(`[getNetworkForAddress] -> using networks.regtest`);
+        return networks.regtest;
+    }
+    if (prefix === networks.testnet.bech32) {
+        console.log(`[getNetworkForAddress] -> using networks.testnet`);
+        return networks.testnet;
+    }
+    // Fallback: try testnet (the deploy script used it)
+    console.warn(`[getNetworkForAddress] unknown prefix "${prefix}", falling back to networks.testnet`);
+    return networks.testnet;
+}
+
 export function TokenCard({ symbol, name, contractAddress, accentColor, wallet }: Props) {
     const [status, setStatus] = useState<MineStatus>('idle');
     const [txId, setTxId] = useState<string | null>(null);
@@ -47,40 +72,80 @@ export function TokenCard({ symbol, name, contractAddress, accentColor, wallet }
         if (!wallet.address) return;
         const stored = localStorage.getItem(pendingTxKey(contractAddress, wallet.address));
         if (stored) {
+            console.log(`[${symbol}] restored pending tx from localStorage: ${stored}`);
             setTxId(stored);
             setStatus('success');
         }
     }, [contractAddress, wallet.address]);
 
+    // ── fetchBalance ────────────────────────────────────────────────────
     const fetchBalance = useCallback(async () => {
         if (!wallet.connected || !wallet.address) {
+            console.log(`[${symbol}] fetchBalance: skipped — wallet not connected`);
             setBalance(null);
             return;
         }
+
+        console.log(`[${symbol}] fetchBalance: starting for wallet ${wallet.address}`);
+        console.log(`[${symbol}] fetchBalance: contract address = ${contractAddress}`);
         setBalanceLoading(true);
+
         try {
+            // Step 1: import modules
+            console.log(`[${symbol}] fetchBalance: importing opnet + bitcoin modules...`);
             const { JSONRpcProvider, getContract, OP_20_ABI } = await import('opnet');
             const { Address } = await import('@btc-vision/transaction');
-            const { toOutputScript } = await import('@btc-vision/bitcoin');
+            const { toOutputScript, networks } = await import('@btc-vision/bitcoin');
+            console.log(`[${symbol}] fetchBalance: modules imported OK`);
+
+            // Step 2: create provider
+            console.log(`[${symbol}] fetchBalance: creating JSONRpcProvider("${RPC_URL}", networks.testnet)...`);
             const provider = new JSONRpcProvider(RPC_URL, networks.testnet);
+            console.log(`[${symbol}] fetchBalance: provider created OK`);
+
+            // Step 3: get contract instance
+            console.log(`[${symbol}] fetchBalance: calling getContract("${contractAddress}", OP_20_ABI, provider, networks.testnet)...`);
             const contract = getContract(
                 contractAddress,
                 OP_20_ABI as any,
                 provider,
                 networks.testnet,
             );
+            console.log(`[${symbol}] fetchBalance: contract instance created OK`);
 
-            // balanceOf expects an Address object — decode bech32 to raw bytes
-            const OPNET_NET = { ...networks.testnet, bech32: networks.testnet.bech32Opnet! };
-            const script = toOutputScript(wallet.address!, OPNET_NET);
+            // Step 4: parse wallet address to output script
+            const addrNetwork = await getNetworkForAddress(wallet.address!);
+            console.log(`[${symbol}] fetchBalance: parsing wallet address with bech32="${addrNetwork.bech32}"...`);
+
+            let script: Uint8Array;
+            try {
+                script = toOutputScript(wallet.address!, addrNetwork);
+            } catch (addrErr: any) {
+                console.error(`[${symbol}] fetchBalance: toOutputScript FAILED for "${wallet.address}" with bech32="${addrNetwork.bech32}":`, addrErr);
+                throw new Error(`Address decode failed (prefix="${wallet.address!.split('1')[0]}", network bech32="${addrNetwork.bech32}"): ${addrErr.message}`);
+            }
+            console.log(`[${symbol}] fetchBalance: output script (${script.length} bytes): ${Array.from(script).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+
+            // Step 5: extract witness program (skip version byte + push length)
             const ownerAddress = Address.wrap(script.subarray(2));
+            console.log(`[${symbol}] fetchBalance: Address.wrap OK (${script.length - 2} byte witness program)`);
 
-            // Fetch balance and decimals in parallel
+            // Step 6: call balanceOf + decimals in parallel
+            console.log(`[${symbol}] fetchBalance: calling balanceOf + decimals...`);
             const [balResult, decResult] = await Promise.all([
-                (contract as any).balanceOf(ownerAddress),
-                (contract as any).decimals().catch(() => null),
+                (contract as any).balanceOf(ownerAddress).catch((e: any) => {
+                    console.error(`[${symbol}] fetchBalance: balanceOf() RPC error:`, e);
+                    throw new Error(`balanceOf RPC failed: ${e?.message ?? e}`);
+                }),
+                (contract as any).decimals().catch((e: any) => {
+                    console.warn(`[${symbol}] fetchBalance: decimals() failed (will default to 18):`, e?.message);
+                    return null;
+                }),
             ]);
+            console.log(`[${symbol}] fetchBalance: balResult =`, JSON.stringify(balResult, (_k, v) => typeof v === 'bigint' ? v.toString() : v));
+            console.log(`[${symbol}] fetchBalance: decResult =`, JSON.stringify(decResult, (_k, v) => typeof v === 'bigint' ? v.toString() : v));
 
+            // Step 7: extract raw balance
             const raw = balResult?.properties?.balance
                 ?? balResult?.result
                 ?? balResult?.decoded?.[0]
@@ -91,12 +156,18 @@ export function TokenCard({ symbol, name, contractAddress, accentColor, wallet }
                     decResult?.properties?.decimals
                     ?? decResult?.result
                     ?? decResult?.decoded?.[0]
-                    ?? 8
+                    ?? 18
                 );
-                setBalance(formatBalance(BigInt(raw.toString()), decimals));
+                const formatted = formatBalance(BigInt(raw.toString()), decimals);
+                console.log(`[${symbol}] fetchBalance: balance = ${formatted} (raw=${raw}, decimals=${decimals})`);
+                setBalance(formatted);
+            } else {
+                console.warn(`[${symbol}] fetchBalance: could not extract balance from result. balResult keys:`, balResult ? Object.keys(balResult) : 'null');
+                setBalance('0');
             }
-        } catch (err) {
-            console.error(`Failed to fetch ${symbol} balance:`, err);
+        } catch (err: any) {
+            console.error(`[${symbol}] fetchBalance FAILED:`, err);
+            console.error(`[${symbol}] fetchBalance error details — message: "${err?.message}", code: "${err?.code}"`);
         } finally {
             setBalanceLoading(false);
         }
@@ -106,36 +177,48 @@ export function TokenCard({ symbol, name, contractAddress, accentColor, wallet }
         fetchBalance();
     }, [fetchBalance]);
 
+    // ── handleMine ──────────────────────────────────────────────────────
     async function handleMine() {
-        if (!wallet.connected || !wallet.address) return;
-
-        const opnet = (window as any).opnet;
-        if (!opnet) {
-            setErrorMsg('OPWallet not found');
-            setStatus('error');
-            toast.error('OPWallet not found');
+        if (!wallet.connected || !wallet.address) {
+            console.warn(`[${symbol}] handleMine: aborted — wallet not connected`);
             return;
         }
 
-        // Check if a previously submitted tx is still pending in the mempool
+        console.log(`[${symbol}] handleMine: ===== STARTING MINE =====`);
+        console.log(`[${symbol}] handleMine: wallet = ${wallet.address}`);
+        console.log(`[${symbol}] handleMine: contract = ${contractAddress}`);
+        console.log(`[${symbol}] handleMine: cost = ${MINE_COST_SATS} sats`);
+
+        const opnet = (window as any).opnet;
+        if (!opnet) {
+            const msg = 'OPWallet extension not found on window.opnet';
+            console.error(`[${symbol}] handleMine: ${msg}`);
+            setErrorMsg(msg);
+            setStatus('error');
+            toast.error(msg);
+            return;
+        }
+        console.log(`[${symbol}] handleMine: OPWallet detected`);
+
+        // Check for already-pending tx
         const storedTxId = localStorage.getItem(pendingTxKey(contractAddress, wallet.address));
         if (storedTxId) {
+            console.log(`[${symbol}] handleMine: found stored pending tx ${storedTxId}, checking...`);
             try {
                 const { JSONRpcProvider } = await import('opnet');
+                const { networks } = await import('@btc-vision/bitcoin');
                 const provider = new JSONRpcProvider(RPC_URL, networks.testnet);
                 const receipt = await provider.getTransactionReceipt(storedTxId);
                 if (!receipt) {
-                    // Still unconfirmed
-                    console.log(`[${symbol}] mine() already pending in mempool — tx: ${storedTxId}`);
-                    toast.warning(`${symbol} mine already pending in mempool. Tx: ${storedTxId.slice(0, 16)}…`);
+                    console.log(`[${symbol}] handleMine: tx ${storedTxId} still unconfirmed — blocking double-submit`);
+                    toast.warning(`${symbol} mine already pending. Tx: ${storedTxId.slice(0, 16)}...`);
                     return;
                 }
-                // Confirmed — clear it and proceed
+                console.log(`[${symbol}] handleMine: tx ${storedTxId} confirmed — clearing pending state`);
                 localStorage.removeItem(pendingTxKey(contractAddress, wallet.address));
-            } catch {
-                // Receipt lookup threw → treat as still pending
-                console.log(`[${symbol}] mine() already pending in mempool — tx: ${storedTxId}`);
-                toast.warning(`${symbol} mine already pending in mempool. Tx: ${storedTxId.slice(0, 16)}…`);
+            } catch (e: any) {
+                console.warn(`[${symbol}] handleMine: receipt lookup error (treating as still pending):`, e?.message);
+                toast.warning(`${symbol} mine already pending. Tx: ${storedTxId.slice(0, 16)}...`);
                 return;
             }
         }
@@ -145,29 +228,45 @@ export function TokenCard({ symbol, name, contractAddress, accentColor, wallet }
         setErrorMsg(null);
 
         try {
-            // Dynamically import opnet to avoid SSR issues
+            // Step 1: import modules
+            console.log(`[${symbol}] handleMine: importing opnet modules...`);
             const { JSONRpcProvider, getContract } = await import('opnet');
+            const { networks } = await import('@btc-vision/bitcoin');
+            console.log(`[${symbol}] handleMine: modules imported OK`);
 
+            // Step 2: create provider
+            console.log(`[${symbol}] handleMine: creating JSONRpcProvider("${RPC_URL}", networks.testnet)...`);
             const provider = new JSONRpcProvider(RPC_URL, networks.testnet);
+            console.log(`[${symbol}] handleMine: provider created OK`);
 
-            // Build contract instance for simulation (sender is optional; mine() has no calldata)
+            // Step 3: build contract instance with MINE_ABI
+            console.log(`[${symbol}] handleMine: calling getContract("${contractAddress}", MINE_ABI, provider, networks.testnet)...`);
+            console.log(`[${symbol}] handleMine: MINE_ABI =`, JSON.stringify(MINE_ABI));
             const contract = getContract(
                 contractAddress,
                 MINE_ABI as any,
                 provider,
                 networks.testnet,
             );
+            console.log(`[${symbol}] handleMine: contract instance created OK`);
 
-            // Simulate the mine() call
+            // Step 4: simulate mine() call
+            console.log(`[${symbol}] handleMine: simulating mine()...`);
             const simulation = await (contract as any).mine();
+            console.log(`[${symbol}] handleMine: simulation result =`, simulation);
 
             if (simulation.revert) {
-                throw new Error(`Simulation reverted: ${simulation.revert}`);
+                const revertMsg = `Simulation reverted: ${simulation.revert}`;
+                console.error(`[${symbol}] handleMine: ${revertMsg}`);
+                throw new Error(revertMsg);
             }
+            console.log(`[${symbol}] handleMine: simulation passed — sending transaction...`);
 
-            // Send the transaction via OPWallet with BTC payment attached
+            // Step 5: send transaction via OPWallet
+            console.log(`[${symbol}] handleMine: calling sendTransaction with signer=null, mldsaSigner=null, cost=${MINE_COST_SATS} sats...`);
             const receipt = await simulation.sendTransaction({
-                signer: opnet,
+                signer: null,
+                mldsaSigner: null,
                 refundTo: wallet.address,
                 maximumAllowedSatToSpend: BigInt(500_000),
                 feeRate: 10,
@@ -179,24 +278,31 @@ export function TokenCard({ symbol, name, contractAddress, accentColor, wallet }
                     },
                 ],
             });
+            console.log(`[${symbol}] handleMine: sendTransaction receipt =`, receipt);
 
             const submittedTxId = receipt?.transactionId ?? receipt?.[1] ?? 'submitted';
+            console.log(`[${symbol}] handleMine: txId = ${submittedTxId}`);
 
-            // Persist pending tx so we can detect double-submits across page loads
+            // Persist pending tx
             if (submittedTxId !== 'submitted') {
                 localStorage.setItem(pendingTxKey(contractAddress, wallet.address), submittedTxId);
+                console.log(`[${symbol}] handleMine: saved pending tx to localStorage`);
             }
 
             setTxId(submittedTxId);
             setStatus('success');
             toast.success(`Mined ${MINE_REWARD_TOKENS} ${symbol}!`);
-            // Refresh balance after successful mine
+
+            // Refresh balance after a short delay
+            console.log(`[${symbol}] handleMine: scheduling balance refresh in 2s...`);
             setTimeout(() => fetchBalance(), 2000);
         } catch (err: any) {
-            console.error(`mine ${symbol} failed:`, err);
-            setErrorMsg(err?.message ?? 'Transaction failed');
+            console.error(`[${symbol}] handleMine FAILED:`, err);
+            console.error(`[${symbol}] handleMine error details — message: "${err?.message}", stack:`, err?.stack);
+            const msg = err?.message ?? 'Transaction failed';
+            setErrorMsg(msg);
             setStatus('error');
-            toast.error(`${symbol} mine failed: ${err?.message ?? 'Transaction failed'}`);
+            toast.error(`${symbol} mine failed: ${msg}`);
         }
     }
 

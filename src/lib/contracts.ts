@@ -1,15 +1,21 @@
 /**
  * OPNet contract addresses and ABI definitions for the faucet.
- * Update ALPHA_ADDRESS and BETA_ADDRESS after each redeployment.
+ *
+ * NOTE: ALPHA and BETA were deployed on the old testnet chain (pre v1.0.0-testnet).
+ * That chain was reset — those contracts no longer exist.
+ * OctToken (OCT) is deployed on the current testnet chain.
  */
 
 export const NETWORK_NAME = 'OPNet Testnet';
 export const RPC_URL = 'https://testnet.opnet.org';
 
-/** AlphaToken v4 — has mine() */
+/** AlphaToken — INVALIDATED by testnet chain reset (v1.0.0-testnet) */
 export const ALPHA_ADDRESS = 'opt1sqrfpr855j4ngqsyyejc00fvheult7s3mjug2pz9n';
-/** BetaToken v4 — has mine() */
+/** BetaToken — INVALIDATED by testnet chain reset (v1.0.0-testnet) */
 export const BETA_ADDRESS = 'opt1sqpjcuujxqtgawt6ck8qxdw6pue728rkcnghpp084';
+
+/** OctToken (OCT) — deployed on current testnet chain (block #2,303) */
+export const OCT_ADDRESS = 'opt1sqqlnq2fg3lfcpdfrz25mmwkvvnvm2yca0vnw7use';
 
 /** Cost to mine: 0.00001 BTC = 1000 satoshis */
 export const MINE_COST_SATS = BigInt(1000);

@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { TokenCard } from './TokenCard';
 import { WalletBar } from './WalletBar';
+import { TokenInfo } from './TokenInfo';
 import { useToast } from '@/contexts/ToastContext';
-import { ALPHA_ADDRESS, BETA_ADDRESS, NETWORK_NAME, MINE_REWARD_TOKENS, MINE_COST_SATS, RPC_URL } from '@/lib/contracts';
+import { ALPHA_ADDRESS, BETA_ADDRESS, OCT_ADDRESS, NETWORK_NAME, MINE_REWARD_TOKENS, MINE_COST_SATS, RPC_URL } from '@/lib/contracts';
 
 type WalletState = {
     connected: boolean;
@@ -291,6 +291,7 @@ export function FaucetClient() {
                     </div>
                 )}
 
+                {/* Token cards temporarily disabled to isolate RPC issues
                 <div className="grid gap-8 sm:grid-cols-2">
                     <TokenCard
                         symbol="ALPHA"
@@ -307,6 +308,13 @@ export function FaucetClient() {
                         wallet={wallet}
                     />
                 </div>
+                */}
+
+                {/* OctToken info card */}
+                <TokenInfo
+                    contractAddress={OCT_ADDRESS}
+                    wallet={wallet}
+                />
 
                 {/* Info strip */}
                 <div
