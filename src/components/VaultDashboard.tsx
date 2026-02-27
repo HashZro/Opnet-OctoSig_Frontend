@@ -454,13 +454,13 @@ export function VaultDashboard() {
 
             {/* ═══ Vault Selector ═══ */}
             <div
-                className="mb-6 p-6 flex flex-col gap-4"
+                className="mb-6 p-4 sm:p-6 flex flex-col gap-4"
                 style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--border)' }}
             >
                 <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
                     Vault ID
                 </label>
-                <div className="flex gap-3">
+                <div className="flex gap-2 sm:gap-3">
                     <input
                         type="number"
                         min="0"
@@ -491,14 +491,14 @@ export function VaultDashboard() {
             {/* ═══ Vault Info ═══ */}
             {vaultInfo && (
                 <div
-                    className="mb-6 p-6 flex flex-col gap-4"
+                    className="mb-6 p-4 sm:p-6 flex flex-col gap-4"
                     style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--border)' }}
                 >
                     <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
                         Vault #{vaultIdInput} Info
                     </h3>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
                         <InfoCell label="Threshold" value={`${vaultInfo.threshold} of ${vaultInfo.ownerCount}`} />
                         <InfoCell label="Balance" value={formatTokenAmount(vaultInfo.balance)} />
                         <InfoCell label="Total Proposals" value={vaultInfo.totalProposals.toString()} />
@@ -534,7 +534,7 @@ export function VaultDashboard() {
             {/* ═══ Active Proposal ═══ */}
             {vaultInfo?.hasProposal && proposal && (
                 <div
-                    className="mb-6 p-6 flex flex-col gap-4"
+                    className="mb-6 p-4 sm:p-6 flex flex-col gap-4"
                     style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--border)' }}
                 >
                     <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
@@ -603,7 +603,7 @@ export function VaultDashboard() {
             {/* ═══ Deposit ═══ */}
             {vaultInfo && (
                 <div
-                    className="mb-6 p-6 flex flex-col gap-4"
+                    className="mb-6 p-4 sm:p-6 flex flex-col gap-4"
                     style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--border)' }}
                 >
                     <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
@@ -646,7 +646,7 @@ export function VaultDashboard() {
             {/* ═══ Create Proposal ═══ */}
             {vaultInfo && (
                 <div
-                    className="mb-6 p-6 flex flex-col gap-4"
+                    className="mb-6 p-4 sm:p-6 flex flex-col gap-4"
                     style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--border)' }}
                 >
                     <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>

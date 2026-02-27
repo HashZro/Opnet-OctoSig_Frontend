@@ -289,7 +289,7 @@ export function VaultGrid({ filterDefault = 'all' }: { filterDefault?: Filter })
     if (state === 'loading') {
         return (
             <>
-                <section className="py-16">
+                <section className="py-8 sm:py-16">
                     <h2 className="text-3xl font-semibold tracking-tight" style={{ color: 'var(--text)' }}>
                         Vaults
                     </h2>
@@ -319,7 +319,7 @@ export function VaultGrid({ filterDefault = 'all' }: { filterDefault?: Filter })
     if (state === 'error') {
         return (
             <>
-                <section className="py-16">
+                <section className="py-8 sm:py-16">
                     <h2 className="text-3xl font-semibold tracking-tight" style={{ color: 'var(--text)' }}>
                         Vaults
                     </h2>
@@ -359,7 +359,7 @@ export function VaultGrid({ filterDefault = 'all' }: { filterDefault?: Filter })
     if (state === 'done' && vaults.length === 0) {
         return (
             <>
-                <section className="py-16">
+                <section className="py-8 sm:py-16">
                     <h2 className="text-3xl font-semibold tracking-tight" style={{ color: 'var(--text)' }}>
                         Vaults
                     </h2>
@@ -390,10 +390,10 @@ export function VaultGrid({ filterDefault = 'all' }: { filterDefault?: Filter })
     // ── Grid ──
     return (
         <>
-            <section className="py-16">
-                <div className="flex items-center justify-between">
+            <section className="py-8 sm:py-16">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
-                        <h2 className="text-3xl font-semibold tracking-tight" style={{ color: 'var(--text)' }}>
+                        <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight" style={{ color: 'var(--text)' }}>
                             {filter === 'mine' ? 'My Vaults' : 'Vaults'}
                         </h2>
                         <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
@@ -473,11 +473,11 @@ export function VaultGrid({ filterDefault = 'all' }: { filterDefault?: Filter })
                         <Link
                             key={vault.id}
                             href={`/vault/${vault.id}`}
-                            className="block p-6 transition-colors flex flex-col"
+                            className="block p-4 sm:p-6 transition-colors flex flex-col"
                             style={{
                                 backgroundColor: 'var(--card-bg)',
                                 border: '1px solid var(--border)',
-                                height: 280,
+                                minHeight: 240,
                             }}
                             onMouseEnter={(e) => {
                                 e.currentTarget.style.borderColor = 'var(--accent)';

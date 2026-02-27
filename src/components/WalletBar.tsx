@@ -264,10 +264,12 @@ function BtcBalance({ address }: { address: string }) {
 export function WalletBar({ wallet, opnetAvailable, onConnect }: Props) {
     if (wallet.connected && wallet.address) {
         return (
-            <div className="flex items-center gap-3">
-                <OpscanButton />
-                <ChallengeButton />
-                <GitHubButton />
+            <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                <div className="flex items-center gap-1 sm:gap-2">
+                    <OpscanButton />
+                    <ChallengeButton />
+                    <GitHubButton />
+                </div>
                 <BtcBalance address={wallet.address} />
                 <CopyableAddress address={wallet.address} />
             </div>
@@ -275,14 +277,16 @@ export function WalletBar({ wallet, opnetAvailable, onConnect }: Props) {
     }
 
     return (
-        <div className="flex items-center gap-3">
-            <OpscanButton />
-            <ChallengeButton />
-            <GitHubButton />
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            <div className="flex items-center gap-1 sm:gap-2">
+                <OpscanButton />
+                <ChallengeButton />
+                <GitHubButton />
+            </div>
             <button
                 onClick={onConnect}
                 disabled={!opnetAvailable}
-                className="px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-colors"
+                className="px-3 sm:px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-colors"
                 style={{
                     backgroundColor: opnetAvailable ? 'var(--accent)' : '#E5E5E5',
                     color: opnetAvailable ? '#FFFFFF' : 'var(--text-tertiary)',

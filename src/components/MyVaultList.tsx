@@ -1101,7 +1101,7 @@ export function MyVaultList() {
                             <button
                                 type="button"
                                 onClick={() => setExpanded(isOpen ? null : vault.id)}
-                                className="w-full flex items-center gap-4 px-5 py-4 text-left"
+                                className="w-full flex items-center gap-2 sm:gap-4 px-3 sm:px-5 py-3 sm:py-4 text-left"
                                 style={{
                                     backgroundColor: isOpen ? '#FAFAFA' : 'transparent',
                                     borderBottom: isLast && !isOpen ? 'none' : '1px solid var(--border)',
@@ -2001,8 +2001,8 @@ export function MyVaultList() {
 
 function Header({ count }: { count: number | null }) {
     return (
-        <section className="py-16">
-            <h2 className="text-3xl font-semibold tracking-tight" style={{ color: 'var(--text)' }}>
+        <section className="py-8 sm:py-16">
+            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight" style={{ color: 'var(--text)' }}>
                 My Vaults
             </h2>
             <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>

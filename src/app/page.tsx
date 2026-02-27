@@ -5,9 +5,9 @@ export const metadata = { title: 'OctoSig — Multisig Vaults on OPNet' };
 
 export default function Home() {
     return (
-        <div style={{ maxWidth: 1280, margin: '0 auto' }} className="px-6">
+        <div style={{ maxWidth: 1280, margin: '0 auto' }} className="px-4 sm:px-6">
             {/* ── Hero ── */}
-            <section className="pt-24 pb-20 flex items-center gap-16">
+            <section className="pt-12 sm:pt-24 pb-12 sm:pb-20 flex flex-col md:flex-row items-center gap-8 sm:gap-16">
                 <div style={{ flex: '1 1 0' }}>
                     <p
                         className="text-sm font-semibold uppercase tracking-widest mb-4"
@@ -16,7 +16,7 @@ export default function Home() {
                         Powered by OPNet on Bitcoin
                     </p>
                     <h1
-                        className="text-5xl font-bold tracking-tight mb-5"
+                        className="text-3xl sm:text-5xl font-bold tracking-tight mb-5"
                         style={{ color: 'var(--text)', lineHeight: 1.15 }}
                     >
                         A shared safe for
@@ -24,17 +24,17 @@ export default function Home() {
                         your <span style={{ color: 'var(--cyan)' }}>tokens</span>
                     </h1>
                     <p
-                        className="text-lg mb-10"
+                        className="text-base sm:text-lg mb-8 sm:mb-10"
                         style={{ color: 'var(--text-secondary)', lineHeight: 1.7, maxWidth: 480 }}
                     >
                         OctoSig lets you and your friends hold tokens together in a{' '}
                         <strong style={{ color: 'var(--text)' }}>vault</strong>.
                         No one can spend alone — the group decides together.
                     </p>
-                    <div className="flex gap-4">
+                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                         <Link
                             href="/vault/new"
-                            className="px-6 py-3 text-base font-semibold"
+                            className="px-5 sm:px-6 py-3 text-sm sm:text-base font-semibold text-center"
                             style={{
                                 backgroundColor: 'var(--cyan)',
                                 color: '#fff',
@@ -45,7 +45,7 @@ export default function Home() {
                         </Link>
                         <Link
                             href="/vaults"
-                            className="px-6 py-3 text-base font-semibold"
+                            className="px-5 sm:px-6 py-3 text-sm sm:text-base font-semibold text-center"
                             style={{
                                 backgroundColor: 'transparent',
                                 color: 'var(--text)',
@@ -59,8 +59,10 @@ export default function Home() {
 
                 {/* Hero visual — vault diagram */}
                 <div
+                    className="w-full md:w-auto"
                     style={{
-                        flex: '0 0 380px',
+                        flex: '0 0 auto',
+                        maxWidth: 380,
                         backgroundColor: 'var(--card-bg)',
                         border: '1px solid var(--border)',
                         padding: 40,
@@ -128,7 +130,7 @@ export default function Home() {
             <div style={{ height: 1, backgroundColor: 'var(--border)' }} />
 
             {/* ── What is a Vault? — side by side ── */}
-            <section className="py-20 flex gap-16 items-start">
+            <section className="py-12 sm:py-20 flex flex-col md:flex-row gap-8 sm:gap-16 items-start">
                 <div style={{ flex: '1 1 0' }}>
                     <p
                         className="text-sm font-semibold uppercase tracking-widest mb-4"
@@ -161,7 +163,7 @@ export default function Home() {
                 </div>
 
                 {/* Feature cards — stacked on the right */}
-                <div className="flex flex-col gap-4" style={{ flex: '0 0 440px' }}>
+                <div className="flex flex-col gap-4 w-full" style={{ flex: '1 1 auto', maxWidth: 440 }}>
                     {[
                         {
                             icon: (
@@ -236,7 +238,7 @@ export default function Home() {
             <div style={{ height: 1, backgroundColor: 'var(--border)' }} />
 
             {/* ── How it works — horizontal steps ── */}
-            <section className="py-20">
+            <section className="py-12 sm:py-20">
                 <p
                     className="text-sm font-semibold uppercase tracking-widest mb-4 text-center"
                     style={{ color: 'var(--cyan)' }}
@@ -244,68 +246,31 @@ export default function Home() {
                     Step by step
                 </p>
                 <h2
-                    className="text-3xl font-bold text-center mb-12"
+                    className="text-2xl sm:text-3xl font-bold text-center mb-8 sm:mb-12"
                     style={{ color: 'var(--text)' }}
                 >
                     How it works
                 </h2>
 
-                <div className="grid items-start" style={{ gridTemplateColumns: '1fr auto 1fr auto 1fr auto 1fr', gap: 0 }}>
+                {/* Desktop: horizontal grid with arrows */}
+                <div className="hidden md:grid items-start" style={{ gridTemplateColumns: '1fr auto 1fr auto 1fr auto 1fr', gap: 0 }}>
                     {[
-                        {
-                            num: '1',
-                            title: 'Create',
-                            desc: 'Pick your co-owners and set how many approvals are needed.',
-                        },
-                        {
-                            num: '2',
-                            title: 'Deposit',
-                            desc: 'Send tokens into the vault. Anyone can deposit at any time.',
-                        },
-                        {
-                            num: '3',
-                            title: 'Propose',
-                            desc: 'An owner requests a withdrawal — choosing who gets what.',
-                        },
-                        {
-                            num: '4',
-                            title: 'Approve',
-                            desc: 'Others say yes. Once enough approve, tokens are sent automatically.',
-                        },
+                        { num: '1', title: 'Create', desc: 'Pick your co-owners and set how many approvals are needed.' },
+                        { num: '2', title: 'Deposit', desc: 'Send tokens into the vault. Anyone can deposit at any time.' },
+                        { num: '3', title: 'Propose', desc: 'An owner requests a withdrawal — choosing who gets what.' },
+                        { num: '4', title: 'Approve', desc: 'Others say yes. Once enough approve, tokens are sent automatically.' },
                     ].map((step, i) => (
                         <Fragment key={step.num}>
                             <div
                                 className="flex flex-col items-center text-center p-5 hover-lift"
-                                style={{
-                                    backgroundColor: 'var(--card-bg)',
-                                    border: '1px solid var(--border)',
-                                    borderTop: '3px solid var(--cyan)',
-                                }}
+                                style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--border)', borderTop: '3px solid var(--cyan)' }}
                             >
-                                <span
-                                    className="flex items-center justify-center text-base font-bold mb-4"
-                                    style={{
-                                        width: 44,
-                                        height: 44,
-                                        backgroundColor: 'var(--cyan)',
-                                        color: '#fff',
-                                        borderRadius: '50%',
-                                    }}
-                                >
+                                <span className="flex items-center justify-center text-base font-bold mb-4" style={{ width: 44, height: 44, backgroundColor: 'var(--cyan)', color: '#fff', borderRadius: '50%' }}>
                                     {step.num}
                                 </span>
-                                <h3
-                                    className="text-base font-semibold mb-1.5"
-                                    style={{ color: 'var(--text)' }}
-                                >
-                                    {step.title}
-                                </h3>
-                                <p className="text-sm" style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-                                    {step.desc}
-                                </p>
+                                <h3 className="text-base font-semibold mb-1.5" style={{ color: 'var(--text)' }}>{step.title}</h3>
+                                <p className="text-sm" style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>{step.desc}</p>
                             </div>
-
-                            {/* Horizontal arrow */}
                             {i < 3 && (
                                 <div className="flex items-center justify-center" style={{ padding: '0 6px', alignSelf: 'center' }}>
                                     <svg width="24" height="14" viewBox="0 0 24 14" fill="none" style={{ color: 'var(--cyan)' }}>
@@ -317,26 +282,50 @@ export default function Home() {
                         </Fragment>
                     ))}
                 </div>
+
+                {/* Mobile: vertical stack */}
+                <div className="md:hidden grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {[
+                        { num: '1', title: 'Create', desc: 'Pick your co-owners and set how many approvals are needed.' },
+                        { num: '2', title: 'Deposit', desc: 'Send tokens into the vault. Anyone can deposit at any time.' },
+                        { num: '3', title: 'Propose', desc: 'An owner requests a withdrawal — choosing who gets what.' },
+                        { num: '4', title: 'Approve', desc: 'Others say yes. Once enough approve, tokens are sent automatically.' },
+                    ].map((step) => (
+                        <div
+                            key={step.num}
+                            className="flex gap-4 items-start p-4"
+                            style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--border)', borderTop: '3px solid var(--cyan)' }}
+                        >
+                            <span className="flex-shrink-0 flex items-center justify-center text-sm font-bold" style={{ width: 36, height: 36, backgroundColor: 'var(--cyan)', color: '#fff', borderRadius: '50%' }}>
+                                {step.num}
+                            </span>
+                            <div>
+                                <h3 className="text-sm font-semibold mb-1" style={{ color: 'var(--text)' }}>{step.title}</h3>
+                                <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>{step.desc}</p>
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </section>
 
             {/* ── Bottom CTA — full-width banner ── */}
             <section
-                className="mb-20 flex items-center justify-between gap-10 px-12 py-12"
+                className="mb-12 sm:mb-20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 sm:gap-10 px-6 sm:px-12 py-8 sm:py-12"
                 style={{
                     backgroundColor: 'var(--cyan)',
                     color: '#fff',
                 }}
             >
                 <div>
-                    <h2 className="text-2xl font-bold mb-2">Ready to try it?</h2>
-                    <p className="text-base" style={{ color: 'rgba(255,255,255,0.75)' }}>
+                    <h2 className="text-xl sm:text-2xl font-bold mb-2">Ready to try it?</h2>
+                    <p className="text-sm sm:text-base" style={{ color: 'rgba(255,255,255,0.75)' }}>
                         Create your first vault in under a minute, or browse what others have built.
                     </p>
                 </div>
-                <div className="flex gap-4 flex-shrink-0">
+                <div className="flex gap-3 sm:gap-4 flex-shrink-0 w-full sm:w-auto">
                     <Link
                         href="/vault/new"
-                        className="px-6 py-3 text-base font-semibold"
+                        className="flex-1 sm:flex-initial px-5 sm:px-6 py-3 text-sm sm:text-base font-semibold text-center"
                         style={{
                             backgroundColor: '#fff',
                             color: 'var(--cyan-mid)',
@@ -347,7 +336,7 @@ export default function Home() {
                     </Link>
                     <Link
                         href="/vaults"
-                        className="px-6 py-3 text-base font-semibold"
+                        className="flex-1 sm:flex-initial px-5 sm:px-6 py-3 text-sm sm:text-base font-semibold text-center"
                         style={{
                             backgroundColor: 'transparent',
                             color: '#fff',

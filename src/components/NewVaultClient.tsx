@@ -386,7 +386,7 @@ export function NewVaultClient() {
             </div>
 
             {/* Hero */}
-            <section className="pt-6 pb-10">
+            <section className="pt-4 sm:pt-6 pb-6 sm:pb-10">
                 <h2
                     className="text-3xl font-semibold tracking-tight"
                     style={{ color: 'var(--text)' }}
@@ -447,7 +447,7 @@ export function NewVaultClient() {
 
             {/* Contract Info */}
             <div
-                className="mb-8 p-6"
+                className="mb-6 sm:mb-8 p-4 sm:p-6"
                 style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--border)' }}
             >
                 <h3
@@ -456,7 +456,7 @@ export function NewVaultClient() {
                 >
                     Contract Info
                 </h3>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-4">
                     <div className="p-3" style={{ backgroundColor: '#FAFAFA', border: '1px solid var(--border)' }}>
                         <p className="text-[10px] font-medium uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
                             Total Vaults
@@ -537,7 +537,7 @@ export function NewVaultClient() {
 
             {/* Form */}
             <div
-                className="mb-16 p-6 flex flex-col gap-6"
+                className="mb-8 sm:mb-16 p-4 sm:p-6 flex flex-col gap-5 sm:gap-6"
                 style={{
                     backgroundColor: 'var(--card-bg)',
                     border: '1px solid var(--border)',
