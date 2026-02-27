@@ -1,24 +1,30 @@
 import type { Metadata } from 'next';
-import { Space_Grotesk } from 'next/font/google';
+import { Inter } from 'next/font/google';
 import { ToastProvider } from '@/contexts/ToastContext';
+import { WalletProvider } from '@/contexts/WalletContext';
+import { AppShell } from '@/components/AppShell';
 import './globals.css';
 
-const spaceGrotesk = Space_Grotesk({
+const inter = Inter({
     subsets: ['latin'],
     weight: ['400', '500', '600', '700'],
-    variable: '--font-space-grotesk',
+    variable: '--font-inter',
 });
 
 export const metadata: Metadata = {
-    title: 'MultSig Vault — Faucet',
-    description: 'OPNet testnet faucet. Mine ALPHA and BETA tokens for testing.',
+    title: 'OctoSig',
+    description: 'OctoSig — OPNet testnet faucet and multisig vault.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
     return (
-        <html lang="en" className={spaceGrotesk.variable}>
-            <body className="font-[family-name:var(--font-space-grotesk)] antialiased">
-                <ToastProvider>{children}</ToastProvider>
+        <html lang="en" className={inter.variable}>
+            <body className="font-[family-name:var(--font-inter)] antialiased">
+                <ToastProvider>
+                    <WalletProvider>
+                        <AppShell>{children}</AppShell>
+                    </WalletProvider>
+                </ToastProvider>
             </body>
         </html>
     );

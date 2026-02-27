@@ -1,16 +1,19 @@
 @import "tailwindcss";
 
 :root {
-  --bg:        #FFFBF0;
-  --card-bg:   #FFFFFF;
-  --border:    #000000;
-  --shadow:    #000000;
-  --text:      #0A0A0A;
-  --yellow:    #F5C800;
-  --orange:    #FF6B35;
-  --teal:      #4ECDC4;
-  --red:       #FF2D20;
-  --green:     #44CF6C;
+  --bg:         #FAFAFA;
+  --card-bg:    #FFFFFF;
+  --border:     #E5E5E5;
+  --border-dark:#D4D4D4;
+  --text:       #171717;
+  --text-secondary: #525252;
+  --text-tertiary:  #A3A3A3;
+  --accent:     #000000;
+  --accent-hover:#171717;
+  --red:        #DC2626;
+  --green:      #16A34A;
+  --blue:       #2563EB;
+  --amber:      #D97706;
 }
 
 * {
@@ -21,44 +24,27 @@ html,
 body {
   background-color: var(--bg);
   color: var(--text);
-  font-family: 'Space Grotesk', 'DM Sans', system-ui, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   min-height: 100vh;
-}
-
-/* Neobrutalism hard shadow utility */
-.nb-shadow {
-  box-shadow: 4px 4px 0px 0px var(--shadow);
-}
-.nb-shadow-lg {
-  box-shadow: 6px 6px 0px 0px var(--shadow);
-}
-.nb-shadow-sm {
-  box-shadow: 2px 2px 0px 0px var(--shadow);
-}
-
-/* Press-down interaction */
-.nb-press {
-  transition: transform 0.1s ease, box-shadow 0.1s ease;
-}
-.nb-press:hover:not(:disabled) {
-  transform: translate(2px, 2px);
-  box-shadow: 2px 2px 0px 0px var(--shadow);
-}
-.nb-press:active:not(:disabled) {
-  transform: translate(4px, 4px);
-  box-shadow: 0px 0px 0px 0px var(--shadow);
-}
-.nb-press:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Toast animations */
 @keyframes toast-enter {
-  from { transform: translateX(120%); opacity: 0; }
-  to   { transform: translateX(0);    opacity: 1; }
+  from { transform: translateY(8px); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
 }
 @keyframes toast-exit {
-  from { transform: translateX(0);    opacity: 1; }
-  to   { transform: translateX(120%); opacity: 0; }
+  from { transform: translateY(0);   opacity: 1; }
+  to   { transform: translateY(8px); opacity: 0; }
+}
+
+/* Subtle hover transition */
+.hover-lift {
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.hover-lift:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border-color: var(--border-dark);
 }

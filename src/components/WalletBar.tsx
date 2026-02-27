@@ -20,13 +20,23 @@ function truncateAddress(addr: string): string {
 export function WalletBar({ wallet, opnetAvailable, onConnect }: Props) {
     if (wallet.connected && wallet.address) {
         return (
-            <code
-                className="rounded-lg border-2 border-black px-3 py-1 text-xs font-bold"
-                style={{ backgroundColor: '#222', color: 'var(--yellow)' }}
-                title={wallet.address}
-            >
-                {truncateAddress(wallet.address)}
-            </code>
+            <div className="flex items-center gap-2">
+                <span
+                    className="inline-block h-2 w-2 rounded-full"
+                    style={{ backgroundColor: 'var(--green)' }}
+                />
+                <code
+                    className="px-3 py-1.5 text-xs font-mono font-medium"
+                    style={{
+                        backgroundColor: '#F5F5F5',
+                        color: 'var(--text)',
+                        border: '1px solid var(--border)',
+                    }}
+                    title={wallet.address}
+                >
+                    {truncateAddress(wallet.address)}
+                </code>
+            </div>
         );
     }
 
@@ -34,14 +44,16 @@ export function WalletBar({ wallet, opnetAvailable, onConnect }: Props) {
         <button
             onClick={onConnect}
             disabled={!opnetAvailable}
-            className="nb-press nb-shadow rounded-lg border-2 border-black px-4 py-2 text-sm font-black uppercase tracking-wide"
+            className="px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-colors"
             style={{
-                backgroundColor: opnetAvailable ? 'var(--yellow)' : '#ccc',
-                color: '#000',
+                backgroundColor: opnetAvailable ? 'var(--accent)' : '#E5E5E5',
+                color: opnetAvailable ? '#FFFFFF' : 'var(--text-tertiary)',
+                border: '1px solid transparent',
+                cursor: opnetAvailable ? 'pointer' : 'not-allowed',
             }}
             title={!opnetAvailable ? 'OPWallet extension not detected' : undefined}
         >
-            {opnetAvailable ? 'Connect OPWallet' : 'OPWallet Not Found'}
+            {opnetAvailable ? 'Connect Wallet' : 'Wallet Not Found'}
         </button>
     );
 }

@@ -40,7 +40,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             const id = `toast-${++nextId}`;
             setToasts((prev) => {
                 const next = [...prev, { id, type, message, exiting: false }];
-                // Cap at MAX_TOASTS — remove oldest
                 if (next.length > MAX_TOASTS) {
                     return next.slice(next.length - MAX_TOASTS);
                 }
@@ -73,8 +72,6 @@ export function useToast() {
     };
 }
 
-// ── Container (portal to body) ──
-
 function ToastContainer({ toasts, removeToast }: { toasts: Toast[]; removeToast: (id: string) => void }) {
     const [mounted, setMounted] = useState(false);
 
@@ -93,7 +90,7 @@ function ToastContainer({ toasts, removeToast }: { toasts: Toast[]; removeToast:
                 right: '1.5rem',
                 display: 'flex',
                 flexDirection: 'column-reverse',
-                gap: '0.75rem',
+                gap: '0.5rem',
                 zIndex: 9999,
                 pointerEvents: 'none',
             }}
@@ -106,18 +103,15 @@ function ToastContainer({ toasts, removeToast }: { toasts: Toast[]; removeToast:
     );
 }
 
-// ── Single toast ──
-
-const TYPE_CONFIG: Record<ToastType, { bg: string; icon: string }> = {
-    success: { bg: 'var(--green)', icon: '\u2713' },
-    error: { bg: 'var(--red)', icon: '\u2717' },
-    info: { bg: 'var(--teal)', icon: 'i' },
-    warning: { bg: 'var(--yellow)', icon: '!' },
+const TYPE_CONFIG: Record<ToastType, { bg: string; border: string; color: string; icon: string }> = {
+    success: { bg: '#F0FDF4', border: '#BBF7D0', color: '#16A34A', icon: '\u2713' },
+    error:   { bg: '#FEF2F2', border: '#FECACA', color: '#DC2626', icon: '\u2717' },
+    info:    { bg: '#F0F9FF', border: '#BAE6FD', color: '#0284C7', icon: 'i' },
+    warning: { bg: '#FFFBEB', border: '#FDE68A', color: '#D97706', icon: '!' },
 };
 
 function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
     const cfg = TYPE_CONFIG[toast.type];
-    const textColor = toast.type === 'error' ? '#fff' : '#000';
 
     return (
         <div
@@ -131,49 +125,41 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
                 maxWidth: 'min(420px, calc(100vw - 2rem))',
                 padding: '0.75rem 1rem',
                 backgroundColor: cfg.bg,
-                border: '3px solid #000',
-                boxShadow: '4px 4px 0 0 #000',
-                borderRadius: '0.75rem',
-                color: textColor,
+                border: `1px solid ${cfg.border}`,
+                color: cfg.color,
                 animation: toast.exiting
                     ? 'toast-exit 150ms ease forwards'
                     : 'toast-enter 150ms ease forwards',
             }}
         >
-            {/* Icon badge */}
             <span
                 style={{
                     display: 'inline-flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    width: '28px',
-                    height: '28px',
-                    minWidth: '28px',
-                    border: '2px solid #000',
-                    borderRadius: '0.375rem',
-                    backgroundColor: 'rgba(255,255,255,0.3)',
-                    fontWeight: 900,
-                    fontSize: '0.875rem',
-                    color: '#000',
+                    width: '20px',
+                    height: '20px',
+                    minWidth: '20px',
+                    fontWeight: 700,
+                    fontSize: '0.75rem',
+                    color: cfg.color,
                 }}
             >
                 {cfg.icon}
             </span>
 
-            {/* Message */}
             <span
                 style={{
                     flex: 1,
-                    fontWeight: 700,
-                    fontSize: '0.875rem',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.025em',
+                    fontWeight: 500,
+                    fontSize: '0.8125rem',
+                    letterSpacing: '0.01em',
+                    color: cfg.color,
                 }}
             >
                 {toast.message}
             </span>
 
-            {/* Close button */}
             <button
                 type="button"
                 onClick={onClose}
@@ -182,17 +168,17 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
                     display: 'inline-flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    width: '24px',
-                    height: '24px',
-                    minWidth: '24px',
-                    border: '2px solid #000',
-                    borderRadius: '0.25rem',
-                    backgroundColor: 'rgba(255,255,255,0.3)',
+                    width: '20px',
+                    height: '20px',
+                    minWidth: '20px',
+                    border: 'none',
+                    backgroundColor: 'transparent',
                     cursor: 'pointer',
-                    fontWeight: 900,
+                    fontWeight: 500,
                     fontSize: '1rem',
                     lineHeight: 1,
-                    color: '#000',
+                    color: cfg.color,
+                    opacity: 0.6,
                     padding: 0,
                 }}
             >

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { MINE_COST_SATS, MINE_REWARD_TOKENS, MINE_ABI, RPC_URL } from '@/lib/contracts';
+import { MINE_REWARD_TOKENS, MINE_ABI, RPC_URL } from '@/lib/contracts';
 import { useToast } from '@/contexts/ToastContext';
 
 type WalletState = {
@@ -11,10 +11,7 @@ type WalletState = {
 };
 
 type Props = {
-    symbol: string;
-    name: string;
     contractAddress: string;
-    accentColor: string;
     wallet: WalletState;
 };
 
@@ -32,142 +29,107 @@ function formatBalance(raw: bigint, decimals: number): string {
     return fracStr ? `${whole.toLocaleString()}.${fracStr}` : whole.toLocaleString();
 }
 
-/**
- * Pick the right network object for decoding a wallet address.
- * OPWallet returns bcrt1... (regtest HRP) on OPNet testnet,
- * so we must match the bech32 prefix to avoid "invalid prefix" errors.
- */
 async function getNetworkForAddress(address: string) {
     const { networks } = await import('@btc-vision/bitcoin');
-    const prefix = address.split('1')[0]; // e.g. "bcrt", "tb", "bc"
-
-    console.log(`[getNetworkForAddress] address prefix: "${prefix}"`);
-    console.log(`[getNetworkForAddress] networks.testnet.bech32 = "${networks.testnet.bech32}"`);
-    console.log(`[getNetworkForAddress] networks.regtest.bech32 = "${networks.regtest.bech32}"`);
-
-    if (prefix === networks.regtest.bech32) {
-        console.log(`[getNetworkForAddress] -> using networks.regtest`);
-        return networks.regtest;
-    }
-    if (prefix === networks.testnet.bech32) {
-        console.log(`[getNetworkForAddress] -> using networks.testnet`);
-        return networks.testnet;
-    }
-    // Fallback: try testnet (the deploy script used it)
-    console.warn(`[getNetworkForAddress] unknown prefix "${prefix}", falling back to networks.testnet`);
+    const prefix = address.split('1')[0];
+    if (prefix === networks.regtest.bech32) return networks.regtest;
+    if (prefix === networks.testnet.bech32) return networks.testnet;
     return networks.testnet;
 }
 
-export function TokenCard({ symbol, name, contractAddress, accentColor, wallet }: Props) {
+export function TokenCard({ contractAddress, wallet }: Props) {
     const [status, setStatus] = useState<MineStatus>('idle');
     const [txId, setTxId] = useState<string | null>(null);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [balance, setBalance] = useState<string | null>(null);
     const [balanceLoading, setBalanceLoading] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [symbol, setSymbol] = useState<string>('...');
+    const [name, setName] = useState<string>('Loading...');
     const { toast } = useToast();
 
-    // Restore any previously submitted pending tx from localStorage
+    // Fetch token name and symbol from blockchain
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const { JSONRpcProvider, getContract, OP_20_ABI } = await import('opnet');
+                const { networks } = await import('@btc-vision/bitcoin');
+
+                const provider = new JSONRpcProvider(RPC_URL, networks.testnet);
+                const contract = getContract(contractAddress, OP_20_ABI as any, provider, networks.testnet);
+
+                const [nameRes, symbolRes] = await Promise.all([
+                    (contract as any).name().catch(() => null),
+                    (contract as any).symbol().catch(() => null),
+                ]);
+
+                if (!cancelled) {
+                    setName(nameRes?.properties?.name ?? 'Unknown');
+                    setSymbol(symbolRes?.properties?.symbol ?? '???');
+                }
+            } catch (err) {
+                console.error('[TokenCard] Failed to fetch token metadata:', err);
+                if (!cancelled) {
+                    setName('Unknown');
+                    setSymbol('???');
+                }
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [contractAddress]);
+
     useEffect(() => {
         if (!wallet.address) return;
         const stored = localStorage.getItem(pendingTxKey(contractAddress, wallet.address));
         if (stored) {
-            console.log(`[${symbol}] restored pending tx from localStorage: ${stored}`);
             setTxId(stored);
             setStatus('success');
         }
     }, [contractAddress, wallet.address]);
 
-    // ── fetchBalance ────────────────────────────────────────────────────
     const fetchBalance = useCallback(async () => {
         if (!wallet.connected || !wallet.address) {
-            console.log(`[${symbol}] fetchBalance: skipped — wallet not connected`);
             setBalance(null);
             return;
         }
-
-        console.log(`[${symbol}] fetchBalance: starting for wallet ${wallet.address}`);
-        console.log(`[${symbol}] fetchBalance: contract address = ${contractAddress}`);
         setBalanceLoading(true);
-
         try {
-            // Step 1: import modules
-            console.log(`[${symbol}] fetchBalance: importing opnet + bitcoin modules...`);
             const { JSONRpcProvider, getContract, OP_20_ABI } = await import('opnet');
             const { Address } = await import('@btc-vision/transaction');
             const { toOutputScript, networks } = await import('@btc-vision/bitcoin');
-            console.log(`[${symbol}] fetchBalance: modules imported OK`);
 
-            // Step 2: create provider
-            console.log(`[${symbol}] fetchBalance: creating JSONRpcProvider("${RPC_URL}", networks.testnet)...`);
             const provider = new JSONRpcProvider(RPC_URL, networks.testnet);
-            console.log(`[${symbol}] fetchBalance: provider created OK`);
+            const contract = getContract(contractAddress, OP_20_ABI as any, provider, networks.testnet);
 
-            // Step 3: get contract instance
-            console.log(`[${symbol}] fetchBalance: calling getContract("${contractAddress}", OP_20_ABI, provider, networks.testnet)...`);
-            const contract = getContract(
-                contractAddress,
-                OP_20_ABI as any,
-                provider,
-                networks.testnet,
-            );
-            console.log(`[${symbol}] fetchBalance: contract instance created OK`);
-
-            // Step 4: parse wallet address to output script
             const addrNetwork = await getNetworkForAddress(wallet.address!);
-            console.log(`[${symbol}] fetchBalance: parsing wallet address with bech32="${addrNetwork.bech32}"...`);
-
             let script: Uint8Array;
             try {
                 script = toOutputScript(wallet.address!, addrNetwork);
             } catch (addrErr: any) {
-                console.error(`[${symbol}] fetchBalance: toOutputScript FAILED for "${wallet.address}" with bech32="${addrNetwork.bech32}":`, addrErr);
-                throw new Error(`Address decode failed (prefix="${wallet.address!.split('1')[0]}", network bech32="${addrNetwork.bech32}"): ${addrErr.message}`);
+                throw new Error(`Address decode failed: ${addrErr.message}`);
             }
-            console.log(`[${symbol}] fetchBalance: output script (${script.length} bytes): ${Array.from(script).map(b => b.toString(16).padStart(2, '0')).join('')}`);
 
-            // Step 5: extract witness program (skip version byte + push length)
             const ownerAddress = Address.wrap(script.subarray(2));
-            console.log(`[${symbol}] fetchBalance: Address.wrap OK (${script.length - 2} byte witness program)`);
-
-            // Step 6: call balanceOf + decimals in parallel
-            console.log(`[${symbol}] fetchBalance: calling balanceOf + decimals...`);
             const [balResult, decResult] = await Promise.all([
-                (contract as any).balanceOf(ownerAddress).catch((e: any) => {
-                    console.error(`[${symbol}] fetchBalance: balanceOf() RPC error:`, e);
-                    throw new Error(`balanceOf RPC failed: ${e?.message ?? e}`);
-                }),
-                (contract as any).decimals().catch((e: any) => {
-                    console.warn(`[${symbol}] fetchBalance: decimals() failed (will default to 18):`, e?.message);
-                    return null;
-                }),
+                (contract as any).balanceOf(ownerAddress).catch(() => null),
+                (contract as any).decimals().catch(() => null),
             ]);
-            console.log(`[${symbol}] fetchBalance: balResult =`, JSON.stringify(balResult, (_k, v) => typeof v === 'bigint' ? v.toString() : v));
-            console.log(`[${symbol}] fetchBalance: decResult =`, JSON.stringify(decResult, (_k, v) => typeof v === 'bigint' ? v.toString() : v));
 
-            // Step 7: extract raw balance
-            const raw = balResult?.properties?.balance
-                ?? balResult?.result
-                ?? balResult?.decoded?.[0]
-                ?? null;
+            if (balResult === null) {
+                setBalance('—');
+                return;
+            }
 
+            const raw = balResult?.properties?.balance ?? balResult?.result ?? balResult?.decoded?.[0] ?? null;
             if (raw !== null) {
-                const decimals = Number(
-                    decResult?.properties?.decimals
-                    ?? decResult?.result
-                    ?? decResult?.decoded?.[0]
-                    ?? 18
-                );
-                const formatted = formatBalance(BigInt(raw.toString()), decimals);
-                console.log(`[${symbol}] fetchBalance: balance = ${formatted} (raw=${raw}, decimals=${decimals})`);
-                setBalance(formatted);
+                const decimals = Number(decResult?.properties?.decimals ?? decResult?.result ?? decResult?.decoded?.[0] ?? 18);
+                setBalance(formatBalance(BigInt(raw.toString()), decimals));
             } else {
-                console.warn(`[${symbol}] fetchBalance: could not extract balance from result. balResult keys:`, balResult ? Object.keys(balResult) : 'null');
                 setBalance('0');
             }
         } catch (err: any) {
             console.error(`[${symbol}] fetchBalance FAILED:`, err);
-            console.error(`[${symbol}] fetchBalance error details — message: "${err?.message}", code: "${err?.code}"`);
         } finally {
             setBalanceLoading(false);
         }
@@ -177,48 +139,32 @@ export function TokenCard({ symbol, name, contractAddress, accentColor, wallet }
         fetchBalance();
     }, [fetchBalance]);
 
-    // ── handleMine ──────────────────────────────────────────────────────
     async function handleMine() {
-        if (!wallet.connected || !wallet.address) {
-            console.warn(`[${symbol}] handleMine: aborted — wallet not connected`);
-            return;
-        }
-
-        console.log(`[${symbol}] handleMine: ===== STARTING MINE =====`);
-        console.log(`[${symbol}] handleMine: wallet = ${wallet.address}`);
-        console.log(`[${symbol}] handleMine: contract = ${contractAddress}`);
-        console.log(`[${symbol}] handleMine: cost = ${MINE_COST_SATS} sats`);
+        if (!wallet.connected || !wallet.address) return;
 
         const opnet = (window as any).opnet;
         if (!opnet) {
-            const msg = 'OPWallet extension not found on window.opnet';
-            console.error(`[${symbol}] handleMine: ${msg}`);
+            const msg = 'OPWallet extension not found';
             setErrorMsg(msg);
             setStatus('error');
             toast.error(msg);
             return;
         }
-        console.log(`[${symbol}] handleMine: OPWallet detected`);
 
-        // Check for already-pending tx
         const storedTxId = localStorage.getItem(pendingTxKey(contractAddress, wallet.address));
         if (storedTxId) {
-            console.log(`[${symbol}] handleMine: found stored pending tx ${storedTxId}, checking...`);
             try {
                 const { JSONRpcProvider } = await import('opnet');
                 const { networks } = await import('@btc-vision/bitcoin');
                 const provider = new JSONRpcProvider(RPC_URL, networks.testnet);
                 const receipt = await provider.getTransactionReceipt(storedTxId);
                 if (!receipt) {
-                    console.log(`[${symbol}] handleMine: tx ${storedTxId} still unconfirmed — blocking double-submit`);
-                    toast.warning(`${symbol} mine already pending. Tx: ${storedTxId.slice(0, 16)}...`);
+                    toast.warning(`${symbol} mine already pending`);
                     return;
                 }
-                console.log(`[${symbol}] handleMine: tx ${storedTxId} confirmed — clearing pending state`);
                 localStorage.removeItem(pendingTxKey(contractAddress, wallet.address));
-            } catch (e: any) {
-                console.warn(`[${symbol}] handleMine: receipt lookup error (treating as still pending):`, e?.message);
-                toast.warning(`${symbol} mine already pending. Tx: ${storedTxId.slice(0, 16)}...`);
+            } catch {
+                toast.warning(`${symbol} mine already pending`);
                 return;
             }
         }
@@ -228,42 +174,15 @@ export function TokenCard({ symbol, name, contractAddress, accentColor, wallet }
         setErrorMsg(null);
 
         try {
-            // Step 1: import modules
-            console.log(`[${symbol}] handleMine: importing opnet modules...`);
             const { JSONRpcProvider, getContract } = await import('opnet');
             const { networks } = await import('@btc-vision/bitcoin');
-            console.log(`[${symbol}] handleMine: modules imported OK`);
 
-            // Step 2: create provider
-            console.log(`[${symbol}] handleMine: creating JSONRpcProvider("${RPC_URL}", networks.testnet)...`);
             const provider = new JSONRpcProvider(RPC_URL, networks.testnet);
-            console.log(`[${symbol}] handleMine: provider created OK`);
+            const contract = getContract(contractAddress, MINE_ABI as any, provider, networks.testnet);
 
-            // Step 3: build contract instance with MINE_ABI
-            console.log(`[${symbol}] handleMine: calling getContract("${contractAddress}", MINE_ABI, provider, networks.testnet)...`);
-            console.log(`[${symbol}] handleMine: MINE_ABI =`, JSON.stringify(MINE_ABI));
-            const contract = getContract(
-                contractAddress,
-                MINE_ABI as any,
-                provider,
-                networks.testnet,
-            );
-            console.log(`[${symbol}] handleMine: contract instance created OK`);
-
-            // Step 4: simulate mine() call
-            console.log(`[${symbol}] handleMine: simulating mine()...`);
             const simulation = await (contract as any).mine();
-            console.log(`[${symbol}] handleMine: simulation result =`, simulation);
+            if (simulation.revert) throw new Error(`Simulation reverted: ${simulation.revert}`);
 
-            if (simulation.revert) {
-                const revertMsg = `Simulation reverted: ${simulation.revert}`;
-                console.error(`[${symbol}] handleMine: ${revertMsg}`);
-                throw new Error(revertMsg);
-            }
-            console.log(`[${symbol}] handleMine: simulation passed — sending transaction...`);
-
-            // Step 5: send transaction via OPWallet
-            console.log(`[${symbol}] handleMine: calling sendTransaction with signer=null, mldsaSigner=null, cost=${MINE_COST_SATS} sats...`);
             const receipt = await simulation.sendTransaction({
                 signer: null,
                 mldsaSigner: null,
@@ -271,34 +190,19 @@ export function TokenCard({ symbol, name, contractAddress, accentColor, wallet }
                 maximumAllowedSatToSpend: BigInt(500_000),
                 feeRate: 10,
                 network: networks.testnet,
-                extraOutputs: [
-                    {
-                        address: contractAddress,
-                        value: Number(MINE_COST_SATS),
-                    },
-                ],
+                minGas: BigInt(500_000),
             });
-            console.log(`[${symbol}] handleMine: sendTransaction receipt =`, receipt);
 
             const submittedTxId = receipt?.transactionId ?? receipt?.[1] ?? 'submitted';
-            console.log(`[${symbol}] handleMine: txId = ${submittedTxId}`);
-
-            // Persist pending tx
             if (submittedTxId !== 'submitted') {
                 localStorage.setItem(pendingTxKey(contractAddress, wallet.address), submittedTxId);
-                console.log(`[${symbol}] handleMine: saved pending tx to localStorage`);
             }
 
             setTxId(submittedTxId);
             setStatus('success');
             toast.success(`Mined ${MINE_REWARD_TOKENS} ${symbol}!`);
-
-            // Refresh balance after a short delay
-            console.log(`[${symbol}] handleMine: scheduling balance refresh in 2s...`);
             setTimeout(() => fetchBalance(), 2000);
         } catch (err: any) {
-            console.error(`[${symbol}] handleMine FAILED:`, err);
-            console.error(`[${symbol}] handleMine error details — message: "${err?.message}", stack:`, err?.stack);
             const msg = err?.message ?? 'Transaction failed';
             setErrorMsg(msg);
             setStatus('error');
@@ -310,102 +214,101 @@ export function TokenCard({ symbol, name, contractAddress, accentColor, wallet }
 
     return (
         <div
-            className="nb-shadow-lg rounded-2xl border-3 border-black p-6 flex flex-col gap-5"
+            className="hover-lift flex flex-col gap-4 p-6"
             style={{
                 backgroundColor: 'var(--card-bg)',
-                borderWidth: '3px',
+                border: '1px solid var(--border)',
             }}
         >
-            {/* Token header */}
-            <div className="flex items-start justify-between">
-                <div>
+            {/* Header */}
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
                     <div
-                        className="nb-shadow-sm mb-3 inline-flex items-center rounded-xl border-2 border-black px-4 py-2"
-                        style={{ backgroundColor: accentColor }}
+                        className="flex h-10 w-10 items-center justify-center text-sm font-bold"
+                        style={{ backgroundColor: '#F5F5F5', border: '1px solid var(--border)' }}
                     >
-                        <span className="text-2xl font-black tracking-tight">{symbol}</span>
+                        {symbol.charAt(0)}
                     </div>
-                    <p className="text-sm font-semibold" style={{ color: '#555' }}>
-                        {name}
-                    </p>
+                    <div>
+                        <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>{symbol}</p>
+                        <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{name}</p>
+                    </div>
                 </div>
-                <div
-                    className="rounded-lg border-2 border-black px-2 py-1 text-xs font-bold uppercase"
-                    style={{ backgroundColor: '#000', color: accentColor }}
+                <span
+                    className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
+                    style={{
+                        backgroundColor: '#F5F5F5',
+                        color: 'var(--text-secondary)',
+                        border: '1px solid var(--border)',
+                    }}
                 >
                     OP-20
-                </div>
+                </span>
             </div>
+
+            {/* Divider */}
+            <div style={{ borderTop: '1px solid var(--border)' }} />
 
             {/* Stats */}
             <div className="grid grid-cols-2 gap-3">
-                <Stat label="Cost" value="0.00001 BTC" accent={accentColor} />
-                <Stat label="Reward" value={`${MINE_REWARD_TOKENS} ${symbol}`} accent={accentColor} />
+                <div className="p-3" style={{ backgroundColor: '#FAFAFA', border: '1px solid var(--border)' }}>
+                    <p className="text-[10px] font-medium uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Cost</p>
+                    <p className="mt-1 text-sm font-semibold">Free</p>
+                </div>
+                <div className="p-3" style={{ backgroundColor: '#FAFAFA', border: '1px solid var(--border)' }}>
+                    <p className="text-[10px] font-medium uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Reward</p>
+                    <p className="mt-1 text-sm font-semibold">{MINE_REWARD_TOKENS} {symbol}</p>
+                </div>
             </div>
 
             {/* Balance */}
             {wallet.connected && (
-                <div
-                    className="rounded-lg border-2 border-black p-3"
-                    style={{ backgroundColor: accentColor + '22' }}
-                >
-                    <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#666' }}>
-                        Your Balance
-                    </p>
-                    <p className="mt-0.5 text-lg font-black">
-                        {balanceLoading
-                            ? '...'
-                            : balance !== null
-                                ? `${balance} ${symbol}`
-                                : `— ${symbol}`
-                        }
+                <div className="p-3" style={{ backgroundColor: '#FAFAFA', border: '1px solid var(--border)' }}>
+                    <p className="text-[10px] font-medium uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Your Balance</p>
+                    <p className="mt-1 text-sm font-semibold">
+                        {balanceLoading ? '—' : balance !== null ? `${balance} ${symbol}` : `— ${symbol}`}
                     </p>
                 </div>
             )}
 
-            {/* Address — click to copy */}
-            <div
+            {/* Contract address */}
+            <button
+                type="button"
                 onClick={() => {
                     navigator.clipboard.writeText(contractAddress);
                     setCopied(true);
-                    toast.success('Address copied!');
+                    toast.info('Address copied');
                     setTimeout(() => setCopied(false), 1500);
                 }}
-                className="rounded-lg border-2 border-black p-2 cursor-pointer transition-all duration-150 active:scale-95 hover:border-[3px]"
-                style={{ backgroundColor: copied ? accentColor + '33' : '#f8f8f0' }}
+                className="w-full text-left p-3 transition-colors cursor-pointer"
+                style={{
+                    backgroundColor: copied ? '#F0FDF4' : '#FAFAFA',
+                    border: `1px solid ${copied ? 'var(--green)' : 'var(--border)'}`,
+                }}
             >
                 <div className="flex items-center justify-between mb-1">
-                    <p className="text-xs font-bold uppercase tracking-wider" style={{ color: '#888' }}>
-                        Contract
-                    </p>
-                    <span
-                        className="text-xs font-bold uppercase transition-opacity duration-300"
-                        style={{ color: accentColor, opacity: copied ? 1 : 0 }}
-                    >
-                        Copied!
-                    </span>
+                    <p className="text-[10px] font-medium uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Contract</p>
+                    {copied && (
+                        <span className="text-[10px] font-medium" style={{ color: 'var(--green)' }}>Copied</span>
+                    )}
                 </div>
-                <code className="block truncate text-xs font-bold" style={{ color: '#333' }}>
+                <code className="block truncate text-xs" style={{ color: 'var(--text-secondary)' }}>
                     {contractAddress}
                 </code>
-            </div>
+            </button>
 
             {/* Status feedback */}
             {status === 'success' && txId && (
-                <div
-                    className="nb-shadow-sm rounded-lg border-2 border-black px-4 py-3"
-                    style={{ backgroundColor: 'var(--green)' }}
-                >
-                    <p className="text-sm font-black">MINED! +{MINE_REWARD_TOKENS} {symbol}</p>
-                    <code className="mt-1 block truncate text-xs">{txId}</code>
+                <div className="p-3" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                    <p className="text-xs font-semibold" style={{ color: 'var(--green)' }}>
+                        Mined +{MINE_REWARD_TOKENS} {symbol}
+                    </p>
+                    <code className="mt-1 block truncate text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{txId}</code>
                 </div>
             )}
             {status === 'error' && errorMsg && (
-                <div
-                    className="nb-shadow-sm rounded-lg border-2 border-black px-4 py-3"
-                    style={{ backgroundColor: 'var(--red)', color: '#fff' }}
-                >
-                    <p className="text-xs font-bold">{errorMsg}</p>
+                <div className="p-3" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+                    <p className="text-xs font-medium" style={{ color: 'var(--red)' }}>{errorMsg}</p>
                 </div>
             )}
 
@@ -413,35 +316,24 @@ export function TokenCard({ symbol, name, contractAddress, accentColor, wallet }
             <button
                 onClick={handleMine}
                 disabled={!canMine}
-                className="nb-press nb-shadow rounded-xl border-3 border-black py-4 text-lg font-black uppercase tracking-widest"
+                className="w-full py-3 text-xs font-semibold uppercase tracking-wider transition-colors"
                 style={{
-                    backgroundColor: canMine ? accentColor : '#ccc',
-                    color: '#000',
-                    borderWidth: '3px',
+                    backgroundColor: canMine ? 'var(--accent)' : '#E5E5E5',
+                    color: canMine ? '#FFFFFF' : 'var(--text-tertiary)',
+                    border: 'none',
+                    cursor: canMine ? 'pointer' : 'not-allowed',
                 }}
+                onMouseEnter={(e) => { if (canMine) e.currentTarget.style.backgroundColor = '#333'; }}
+                onMouseLeave={(e) => { if (canMine) e.currentTarget.style.backgroundColor = 'var(--accent)'; }}
             >
-                {status === 'pending' ? 'MINING...' : `MINE ${symbol}`}
+                {status === 'pending' ? 'Mining...' : `Mine ${symbol}`}
             </button>
 
             {!wallet.connected && (
-                <p className="text-center text-xs font-bold uppercase" style={{ color: '#888' }}>
+                <p className="text-center text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
                     Connect wallet to mine
                 </p>
             )}
-        </div>
-    );
-}
-
-function Stat({ label, value, accent }: { label: string; value: string; accent: string }) {
-    return (
-        <div
-            className="rounded-lg border-2 border-black p-3"
-            style={{ backgroundColor: accent + '22' }}
-        >
-            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#666' }}>
-                {label}
-            </p>
-            <p className="mt-0.5 text-sm font-black">{value}</p>
         </div>
     );
 }
