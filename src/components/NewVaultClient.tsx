@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useWallet } from '@/contexts/WalletContext';
 import { useToast } from '@/contexts/ToastContext';
 import { VAULT_ADDRESS, VAULT_ABI, OCT_ADDRESS_HEX, RPC_URL } from '@/lib/contracts';
+import { friendlyError } from '@/lib/errorMessages';
+import { TransactionAlert } from './TransactionAlert';
 
 const MIN_OWNERS = 2;
 const MAX_OWNERS = 10;
@@ -14,7 +16,7 @@ export function NewVaultClient() {
     const { toast } = useToast();
 
     const [tokenAddress, setTokenAddress] = useState('opt1sqp5gx9k0nrqph3sy3aeyzt673dz7ygtqxcfdqfle');
-    const [owners, setOwners] = useState<string[]>(['', 'opt1pzmkt4gh5x6tjtt0shregpyedl70z05a7s3hmsrru7qn5dnwhr8us2u9vvq']);
+    const [owners, setOwners] = useState<string[]>(['', '']);
     const [threshold, setThreshold] = useState(2);
     const [status, setStatus] = useState<'idle' | 'simulating' | 'sending' | 'success' | 'error'>('idle');
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -188,9 +190,23 @@ export function NewVaultClient() {
                         console.log(`[toAddr] ${label}: opt bech32 decoded, witness program=${programBytes.length} bytes`);
 
                         if (programBytes.length === 32) {
-                            // 32-byte witness program (taproot / opt1p...) — use directly
+                            // 32-byte witness program (taproot / opt1p...) — resolve identity key.
+                            // The chain uses identity keys as msg.sender, so we must store
+                            // identity keys as owners for ownership checks to pass on-chain.
+                            const tweakedHex = '0x' + Array.from(programBytes as Uint8Array).map((b: number) => b.toString(16).padStart(2, '0')).join('');
+                            const pubKeyInfo = await provider.getPublicKeyInfo(tweakedHex, false).catch(() => null);
+                            const identityHex = pubKeyInfo?.toString?.() ?? null;
+                            console.log(`[toAddr] ${label}: tweakedHex=${tweakedHex}, identityHex=${identityHex}`);
+
+                            if (identityHex && identityHex.startsWith('0x') && identityHex.length === 66) {
+                                const addr = Address.fromString(identityHex);
+                                console.log(`[toAddr] ${label}: using identity key for owner`);
+                                return addr;
+                            }
+                            // Fallback: identity key not available (wallet never transacted on-chain)
+                            console.warn(`[toAddr] ${label}: identity key not found — using tweaked pubkey. Owner may not be able to interact with vault until their identity is on-chain.`);
                             const addr = Address.wrap(programBytes);
-                            console.log(`[toAddr] ${label}: 32-byte Address.wrap OK`);
+                            console.log(`[toAddr] ${label}: 32-byte Address.wrap fallback`);
                             return addr;
                         }
                     } catch (e) {
@@ -310,10 +326,10 @@ export function NewVaultClient() {
                 signer: null,
                 mldsaSigner: null,
                 refundTo: wallet.address,
-                maximumAllowedSatToSpend: BigInt(500_000),
+                maximumAllowedSatToSpend: BigInt(100_000),
                 feeRate: 10,
                 network: networks.testnet,
-                minGas: BigInt(500_000),
+                minGas: BigInt(100_000),
             });
             console.log('[10] Transaction receipt:', receipt);
 
@@ -332,19 +348,45 @@ export function NewVaultClient() {
             toast.success('Vault created successfully!');
         } catch (err: any) {
             console.error('=== CREATE VAULT FAILED ===', err);
-            console.error('Error name:', err?.name);
-            console.error('Error message:', err?.message);
-            console.error('Error stack:', err?.stack);
+            const { message, isFunding } = friendlyError(err);
             setStatus('error');
-            setErrorMsg(err?.message ?? 'Unknown error');
-            toast.error(`Failed: ${err?.message ?? 'Unknown error'}`);
+            setErrorMsg(message);
+            toast.error(isFunding ? message : `Failed: ${message}`);
         }
     }, [wallet, tokenAddress, owners, threshold, toast]);
 
     return (
         <>
+            {/* Faucet banner */}
+            <div
+                className="flex items-start gap-3 px-5 py-4"
+                style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE', marginTop: '2rem' }}
+            >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+                    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+                </svg>
+                <div>
+                    <p className="text-sm font-semibold" style={{ color: '#1E40AF' }}>
+                        Need free testnet tokens?
+                    </p>
+                    <p className="text-xs mt-1" style={{ color: '#3B82F6', lineHeight: 1.6 }}>
+                        Get free PILL tokens from the{' '}
+                        <a
+                            href="https://faucet.opnet.org/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline font-semibold"
+                            style={{ color: '#1E40AF' }}
+                        >
+                            OPNet Faucet
+                        </a>{' '}
+                        — go to the <strong>&quot;OP-20&quot;</strong> tab, claim your tokens, then use them in your vault.
+                    </p>
+                </div>
+            </div>
+
             {/* Hero */}
-            <section className="py-16">
+            <section className="pt-6 pb-10">
                 <h2
                     className="text-3xl font-semibold tracking-tight"
                     style={{ color: 'var(--text)' }}
@@ -357,6 +399,37 @@ export function NewVaultClient() {
                     approvals.
                 </p>
             </section>
+
+            {/* Mining time notice */}
+            <div
+                className="mb-8 flex items-start gap-3 px-5 py-4"
+                style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}
+            >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                <div>
+                    <p className="text-sm font-semibold" style={{ color: '#1E40AF' }}>
+                        Vaults take a few minutes to appear
+                    </p>
+                    <p className="text-xs mt-1" style={{ color: '#3B82F6', lineHeight: 1.6 }}>
+                        After creating a vault, the transaction needs to be mined into a block on the Bitcoin network.
+                        This usually takes 1–3 minutes. You can track your transaction on{' '}
+                        <a
+                            href="https://opscan.org/accounts/0x3e91ca44a8a6bf585644485ffab376bc1a292d84ce4cbf357a4cf95e0717f586?network=op_testnet"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline font-semibold"
+                            style={{ color: '#1E40AF' }}
+                        >
+                            OPScan
+                        </a>{' '}
+                        while you wait.
+                    </p>
+                </div>
+            </div>
 
             {/* Connect prompt */}
             {!wallet.connected && (
@@ -523,7 +596,11 @@ export function NewVaultClient() {
                                 type="text"
                                 value={owner}
                                 onChange={(e) => updateOwner(i, e.target.value)}
-                                placeholder="tb1p... or 0x... (wallet address)"
+                                placeholder={
+                                    i === 0
+                                        ? (wallet.address ?? 'opt1p... (your wallet)')
+                                        : 'opt1pzmkt4gh5x6tjtt0shregpyedl70z05a7...'
+                                }
                                 className="flex-1 px-3 py-2 text-sm font-mono"
                                 style={{
                                     backgroundColor: '#FAFAFA',
@@ -594,45 +671,49 @@ export function NewVaultClient() {
                     </p>
                 </div>
 
-                <div style={{ borderTop: '1px solid var(--border)' }} />
+                {filledOwners.length >= MIN_OWNERS && (
+                    <>
+                        <div style={{ borderTop: '1px solid var(--border)' }} />
 
-                {/* Threshold */}
-                <div className="flex flex-col gap-2">
-                    <label
-                        className="text-xs font-semibold uppercase tracking-wider"
-                        style={{ color: 'var(--text-secondary)' }}
-                    >
-                        Approval Threshold
-                    </label>
-                    <div className="flex items-center gap-3">
-                        <select
-                            value={threshold}
-                            onChange={(e) => setThreshold(Number(e.target.value))}
-                            className="px-3 py-2 text-sm font-mono"
-                            style={{
-                                backgroundColor: '#FAFAFA',
-                                border: '1px solid var(--border)',
-                                color: 'var(--text)',
-                                outline: 'none',
-                                cursor: 'pointer',
-                            }}
-                        >
-                            {Array.from(
-                                { length: Math.max(0, maxThreshold - MIN_THRESHOLD + 1) },
-                                (_, i) => MIN_THRESHOLD + i,
-                            ).map((n) => (
-                                <option key={n} value={n}>
-                                    {n}
-                                </option>
-                            ))}
-                        </select>
-                        <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                            of {filledOwners.length || '—'} owners must approve each proposal
-                        </span>
-                    </div>
-                </div>
+                        {/* Threshold */}
+                        <div className="flex flex-col gap-2">
+                            <label
+                                className="text-xs font-semibold uppercase tracking-wider"
+                                style={{ color: 'var(--text-secondary)' }}
+                            >
+                                Approval Threshold
+                            </label>
+                            <div className="flex items-center gap-3">
+                                <select
+                                    value={threshold}
+                                    onChange={(e) => setThreshold(Number(e.target.value))}
+                                    className="px-3 py-2 text-sm font-mono"
+                                    style={{
+                                        backgroundColor: '#FAFAFA',
+                                        border: '1px solid var(--border)',
+                                        color: 'var(--text)',
+                                        outline: 'none',
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    {Array.from(
+                                        { length: Math.max(0, maxThreshold - MIN_THRESHOLD + 1) },
+                                        (_, i) => MIN_THRESHOLD + i,
+                                    ).map((n) => (
+                                        <option key={n} value={n}>
+                                            {n}
+                                        </option>
+                                    ))}
+                                </select>
+                                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                                    of {filledOwners.length} owners must approve each proposal
+                                </span>
+                            </div>
+                        </div>
 
-                <div style={{ borderTop: '1px solid var(--border)' }} />
+                        <div style={{ borderTop: '1px solid var(--border)' }} />
+                    </>
+                )}
 
                 {/* Submit */}
                 <button
@@ -657,28 +738,9 @@ export function NewVaultClient() {
             </div>
 
             {/* Success card */}
-            {status === 'success' && (
-                <div
-                    className="mb-16 p-6"
-                    style={{
-                        backgroundColor: '#F0FDF4',
-                        border: '1px solid #BBF7D0',
-                    }}
-                >
-                    <h3
-                        className="text-xs font-semibold uppercase tracking-wider mb-2"
-                        style={{ color: 'var(--green)' }}
-                    >
-                        Vault Created
-                    </h3>
-                    <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                        Your multisig vault has been submitted to the network.
-                    </p>
-                    {txId && (
-                        <p className="mt-2 text-sm font-mono break-all" style={{ color: 'var(--text)' }}>
-                            TX: {txId}
-                        </p>
-                    )}
+            {status === 'success' && txId && (
+                <div className="mb-16">
+                    <TransactionAlert txId={txId} label="Vault Created" />
                 </div>
             )}
 

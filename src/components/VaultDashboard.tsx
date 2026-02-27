@@ -4,6 +4,8 @@ import { useState, useCallback } from 'react';
 import { useWallet } from '@/contexts/WalletContext';
 import { useToast } from '@/contexts/ToastContext';
 import { VAULT_ADDRESS, VAULT_ABI, RPC_URL } from '@/lib/contracts';
+import { friendlyError } from '@/lib/errorMessages';
+import { TransactionAlert } from './TransactionAlert';
 
 type VaultInfo = {
     threshold: bigint;
@@ -34,31 +36,48 @@ async function loadSdk() {
     return { provider, contract, networks, toOutputScript, BinaryWriter, BinaryReader, Address };
 }
 
-function toAddr(
+async function toAddr(
     addrStr: string,
     label: string,
     Address: any,
     toOutputScript: any,
     networks: any,
+    provider?: any,
 ) {
     if (addrStr.startsWith('0x') || addrStr.startsWith('0X')) {
         return Address.fromString(addrStr);
     }
     const prefix = addrStr.split('1')[0];
+    let net;
     if (prefix.startsWith('opt')) {
-        throw new Error(
-            `"${label}" uses an opt1... address (21 bytes). Use 0x hex format or tb1... address.`,
-        );
+        net = { ...networks.testnet, bech32: networks.testnet.bech32Opnet! };
+    } else if (prefix === networks.regtest.bech32) {
+        net = networks.regtest;
+    } else {
+        net = networks.testnet;
     }
-    const net = prefix === networks.regtest.bech32 ? networks.regtest : networks.testnet;
     const script = toOutputScript(addrStr, net);
     const programBytes = script.subarray(2);
+
+    // For 32-byte witness programs (taproot / opt1p...), resolve the identity key
+    // so the OP-20 token contract credits the correct address
+    if (programBytes.length === 32 && provider) {
+        const tweakedHex = '0x' + Array.from(programBytes as Uint8Array).map((b: number) => b.toString(16).padStart(2, '0')).join('');
+        const pubKeyInfo = await provider.getPublicKeyInfo(tweakedHex, false).catch(() => null);
+        const identityHex = pubKeyInfo?.toString?.() ?? null;
+        if (identityHex && identityHex.startsWith('0x') && identityHex.length === 66) {
+            console.log(`[toAddr] "${label}": resolved identity key ${identityHex}`);
+            return Address.fromString(identityHex);
+        }
+        console.warn(`[toAddr] "${label}": could not resolve identity key — recipient must have transacted on OPNet at least once.`);
+    }
+
     return Address.wrap(programBytes);
 }
 
 async function callContract(
     methodName: string,
-    paramsBuilder: ((w: any, Address: any, toOutputScript: any, networks: any) => void) | null,
+    paramsBuilder: ((w: any, Address: any, toOutputScript: any, networks: any, provider: any) => void | Promise<void>) | null,
 ) {
     const sdk = await loadSdk();
     const selectorBuf: Uint8Array = (sdk.contract as any).encodeCalldata(methodName, []);
@@ -66,7 +85,7 @@ async function callContract(
     let calldata: Uint8Array;
     if (paramsBuilder) {
         const params = new sdk.BinaryWriter();
-        paramsBuilder(params, sdk.Address, sdk.toOutputScript, sdk.networks);
+        await paramsBuilder(params, sdk.Address, sdk.toOutputScript, sdk.networks, sdk.provider);
         const paramsBuf = params.getBuffer();
         calldata = new Uint8Array(selectorBuf.length + paramsBuf.length);
         calldata.set(selectorBuf, 0);
@@ -79,15 +98,15 @@ async function callContract(
     return { sim, sdk };
 }
 
-async function sendTx(sim: any, walletAddress: string, networks: any) {
+async function sendTx(sim: any, walletAddress: string, networks: any, opts?: { maxSat?: bigint; minGas?: bigint }) {
     const receipt = await sim.sendTransaction({
         signer: null,
         mldsaSigner: null,
         refundTo: walletAddress,
-        maximumAllowedSatToSpend: BigInt(500_000),
+        maximumAllowedSatToSpend: opts?.maxSat ?? BigInt(500_000),
         feeRate: 10,
         network: networks.testnet,
-        minGas: BigInt(500_000),
+        minGas: opts?.minGas ?? BigInt(200_000),
     });
 
     let txId: string | null = null;
@@ -279,7 +298,8 @@ export function VaultDashboard() {
         } catch (err: any) {
             console.error('Deposit failed:', err);
             setDepositStatus('error');
-            toast.error(`Deposit failed: ${err?.message ?? 'Unknown error'}`);
+            const { message, isFunding } = friendlyError(err);
+            toast.error(isFunding ? message : `Deposit failed: ${message}`);
         }
     }, [wallet, vaultInfo, depositAmount, vaultIdInput, toast]);
 
@@ -315,9 +335,9 @@ export function VaultDashboard() {
             const dec = Number(decimals?.properties?.decimals ?? 18);
             const amount = BigInt(Math.floor(Number(amtStr) * 10 ** dec));
 
-            const { sim } = await callContract('propose', (w, Address, toOutputScript, networks) => {
+            const { sim } = await callContract('propose', async (w, Address, toOutputScript, networks, provider) => {
                 w.writeU256(BigInt(vaultIdInput));
-                w.writeAddress(toAddr(toStr, 'recipient', Address, toOutputScript, networks));
+                w.writeAddress(await toAddr(toStr, 'recipient', Address, toOutputScript, networks, provider));
                 w.writeU256(amount);
             });
 
@@ -333,7 +353,8 @@ export function VaultDashboard() {
         } catch (err: any) {
             console.error('Propose failed:', err);
             setProposeStatus('error');
-            toast.error(`Propose failed: ${err?.message ?? 'Unknown error'}`);
+            const fe = friendlyError(err);
+            toast.error(fe.isFunding ? fe.message : `Propose failed: ${fe.message}`);
         }
     }, [wallet, vaultInfo, proposeTo, proposeAmount, vaultIdInput, toast]);
 
@@ -357,7 +378,7 @@ export function VaultDashboard() {
 
             setApproveStatus('sending');
             toast.info('Confirm approval in OPWallet...');
-            const txId = await sendTx(sim, wallet.address!, sdk.networks);
+            const txId = await sendTx(sim, wallet.address!, sdk.networks, { maxSat: BigInt(250_000), minGas: BigInt(100_000) });
 
             setApproveStatus('success');
             setLastTxId(txId);
@@ -365,7 +386,8 @@ export function VaultDashboard() {
         } catch (err: any) {
             console.error('Approve failed:', err);
             setApproveStatus('error');
-            toast.error(`Approve failed: ${err?.message ?? 'Unknown error'}`);
+            const fe2 = friendlyError(err);
+            toast.error(fe2.isFunding ? fe2.message : `Approve failed: ${fe2.message}`);
         }
     }, [wallet, vaultIdInput, toast]);
 
@@ -397,7 +419,8 @@ export function VaultDashboard() {
         } catch (err: any) {
             console.error('Execute failed:', err);
             setExecuteStatus('error');
-            toast.error(`Execute failed: ${err?.message ?? 'Unknown error'}`);
+            const fe3 = friendlyError(err);
+            toast.error(fe3.isFunding ? fe3.message : `Execute failed: ${fe3.message}`);
         }
     }, [wallet, vaultIdInput, toast]);
 
@@ -524,12 +547,14 @@ export function VaultDashboard() {
                     </div>
 
                     <div>
-                        <p className="text-[10px] font-medium uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>
+                        <p className="text-[10px] font-medium uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>
                             Recipient
                         </p>
-                        <code className="text-xs font-mono break-all" style={{ color: 'var(--text-secondary)' }}>
-                            {proposal.to}
-                        </code>
+                        <div style={{ backgroundColor: '#FAFAFA', border: '1px solid var(--border)', padding: '10px 12px' }}>
+                            <code className="text-xs font-mono break-all" style={{ color: 'var(--text-secondary)' }}>
+                                {proposal.to}
+                            </code>
+                        </div>
                     </div>
 
                     <div className="flex gap-3">
@@ -694,17 +719,10 @@ export function VaultDashboard() {
 
             {/* ═══ Last TX ═══ */}
             {lastTxId && (
-                <div
-                    className="mb-6 p-4"
-                    style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}
-                >
-                    <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--green)' }}>
-                        Transaction Submitted
-                    </p>
-                    <code className="text-xs font-mono break-all" style={{ color: 'var(--text-secondary)' }}>
-                        {lastTxId}
-                    </code>
-                </div>
+                <TransactionAlert
+                    txId={lastTxId}
+                    onDismiss={() => setLastTxId(null)}
+                />
             )}
 
             {/* Spacer */}

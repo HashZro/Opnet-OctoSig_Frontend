@@ -13,7 +13,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
     title: 'OctoSig',
-    description: 'OctoSig — OPNet testnet faucet and multisig vault.',
+    description: 'OctoSig — Multisig vaults on Bitcoin, powered by OPNet.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

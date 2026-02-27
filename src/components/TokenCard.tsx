@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { MINE_REWARD_TOKENS, MINE_ABI, RPC_URL } from '@/lib/contracts';
 import { useToast } from '@/contexts/ToastContext';
+import { friendlyError } from '@/lib/errorMessages';
 
 type WalletState = {
     connected: boolean;
@@ -25,7 +26,7 @@ function formatBalance(raw: bigint, decimals: number): string {
     const divisor = BigInt(10 ** decimals);
     const whole = raw / divisor;
     const frac = raw % divisor;
-    const fracStr = frac.toString().padStart(decimals, '0').replace(/0+$/, '');
+    const fracStr = frac.toString().padStart(decimals, '0').slice(0, 4).replace(/0+$/, '');
     return fracStr ? `${whole.toLocaleString()}.${fracStr}` : whole.toLocaleString();
 }
 
@@ -203,10 +204,10 @@ export function TokenCard({ contractAddress, wallet }: Props) {
             toast.success(`Mined ${MINE_REWARD_TOKENS} ${symbol}!`);
             setTimeout(() => fetchBalance(), 2000);
         } catch (err: any) {
-            const msg = err?.message ?? 'Transaction failed';
-            setErrorMsg(msg);
+            const { message, isFunding } = friendlyError(err);
+            setErrorMsg(message);
             setStatus('error');
-            toast.error(`${symbol} mine failed: ${msg}`);
+            toast.error(isFunding ? message : `${symbol} mine failed: ${message}`);
         }
     }
 
@@ -299,11 +300,27 @@ export function TokenCard({ contractAddress, wallet }: Props) {
 
             {/* Status feedback */}
             {status === 'success' && txId && (
-                <div className="p-3" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-                    <p className="text-xs font-semibold" style={{ color: 'var(--green)' }}>
-                        Mined +{MINE_REWARD_TOKENS} {symbol}
-                    </p>
-                    <code className="mt-1 block truncate text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{txId}</code>
+                <div className="p-3" style={{ backgroundColor: '#F0FDF4', border: '2px solid #16A34A', borderRadius: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                        <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: '#16A34A', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#FFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                        </div>
+                        <p className="text-xs font-bold" style={{ color: '#16A34A' }}>
+                            Mined +{MINE_REWARD_TOKENS} {symbol}
+                        </p>
+                    </div>
+                    <code className="block truncate text-[11px]" style={{ color: 'var(--text-secondary)' }}>{txId}</code>
+                    <div className="mt-2 flex items-start gap-1.5 px-2 py-1.5" style={{ backgroundColor: '#FEF9C3', border: '1px solid #FACC15', borderRadius: '4px' }}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#854D0E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+                            <circle cx="12" cy="12" r="10" />
+                            <polyline points="12 6 12 12 16 14" />
+                        </svg>
+                        <p className="text-[10px] font-medium" style={{ color: '#854D0E', lineHeight: 1.5 }}>
+                            Balance updates after the tx is mined (~1-3 min).
+                        </p>
+                    </div>
                 </div>
             )}
             {status === 'error' && errorMsg && (

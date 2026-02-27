@@ -1,3 +1,5 @@
+import { VaultDetail } from '@/components/VaultDetail';
+
 type Props = {
     params: Promise<{ id: string }>;
 };
@@ -9,32 +11,23 @@ export async function generateMetadata({ params }: Props) {
 
 export default async function VaultDetailPage({ params }: Props) {
     const { id } = await params;
+    const vaultId = parseInt(id, 10);
 
-    return (
-        <>
+    if (isNaN(vaultId) || vaultId < 0) {
+        return (
             <section className="py-16">
                 <h2
                     className="text-3xl font-semibold tracking-tight"
                     style={{ color: 'var(--text)' }}
                 >
-                    Vault #{id}
+                    Invalid Vault ID
                 </h2>
                 <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                    Vault detail page — coming soon.
+                    &quot;{id}&quot; is not a valid vault ID.
                 </p>
             </section>
+        );
+    }
 
-            <div
-                className="mb-16 p-6 text-center"
-                style={{
-                    backgroundColor: 'var(--card-bg)',
-                    border: '1px solid var(--border)',
-                }}
-            >
-                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                    Detailed vault management for Vault #{id} will be available here.
-                </p>
-            </div>
-        </>
-    );
+    return <VaultDetail vaultId={vaultId} />;
 }

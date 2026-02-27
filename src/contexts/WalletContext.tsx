@@ -97,6 +97,45 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         }
     }, []);
 
+    // Listen for account / network changes (like MetaMask's accountsChanged / chainChanged)
+    useEffect(() => {
+        const opnet = (window as any).opnet;
+        if (!opnet || typeof opnet.on !== 'function') return;
+
+        const onAccountsChanged = (accounts: string[]) => {
+            if (!accounts || accounts.length === 0) {
+                const disconnected: WalletState = { connected: false, address: null, network: null };
+                setWallet(disconnected);
+                localStorage.removeItem(WALLET_STORAGE_KEY);
+            } else {
+                setWallet((prev) => {
+                    const next: WalletState = { connected: true, address: accounts[0], network: prev.network };
+                    saveWallet(next);
+                    return next;
+                });
+            }
+        };
+
+        const onChainChanged = (chainInfo: any) => {
+            const net = typeof chainInfo === 'string' ? chainInfo : chainInfo?.network ?? chainInfo?.chain ?? null;
+            setWallet((prev) => {
+                const next: WalletState = { ...prev, network: net };
+                if (prev.connected) saveWallet(next);
+                return next;
+            });
+        };
+
+        opnet.on('accountsChanged', onAccountsChanged);
+        opnet.on('chainChanged', onChainChanged);
+
+        return () => {
+            if (typeof opnet.removeListener === 'function') {
+                opnet.removeListener('accountsChanged', onAccountsChanged);
+                opnet.removeListener('chainChanged', onChainChanged);
+            }
+        };
+    }, [opnetAvailable]);
+
     const connectWallet = useCallback(async () => {
         const opnet = (window as any).opnet;
         if (!opnet) return;
